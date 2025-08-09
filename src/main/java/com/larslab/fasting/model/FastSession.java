@@ -41,8 +41,12 @@ public class FastSession {
     public void setStartAt(Instant startAt) { this.startAt = startAt; }
     public Instant getEndAt() { return endAt; }
     public void setEndAt(Instant endAt) { this.endAt = endAt; }
-    public Integer getGoalHours() { return goalHours != null ? goalHours : 16; }
-    public void setGoalHours(Integer goalHours) { this.goalHours = goalHours != null ? goalHours : 16; }
+    public Integer getGoalHours() { 
+        return goalHours != null ? goalHours : 16; 
+    }
+    public void setGoalHours(Integer goalHours) { 
+        this.goalHours = goalHours != null ? goalHours : 16; 
+    }
 
     @Transient
     @Schema(description = "Berechnete Dauer der Fasten-Session", example = "PT18H30M")

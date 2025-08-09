@@ -23,10 +23,10 @@ public class StartFastRequest {
     }
     
     public Integer getGoalHours() {
-        return goalHours != null ? goalHours : 16;
+        return goalHours; // FIXED: Return actual value, default handling is in constructor
     }
     
     public void setGoalHours(Integer goalHours) {
-        this.goalHours = goalHours != null ? goalHours : 16;
+        this.goalHours = goalHours != null ? goalHours : 16; // Keep default handling in setter
     }
 }
