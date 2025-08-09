@@ -80,12 +80,25 @@ POST /api/fast/start
 Content-Type: application/json
 ```
 
-**Beschreibung:** Startet eine neue Fasten-Session oder gibt die bereits aktive Session zurück.
+**Beschreibung:** Startet eine neue Fasten-Session mit optionalem Ziel oder gibt die bereits aktive Session zurück.
 
-**cURL Beispiel:**
+**Request Body (optional):**
+```json
+{
+  "goalHours": 12
+}
+```
+
+**cURL Beispiele:**
 ```bash
+# Standard: 16 Stunden Ziel
 curl -X POST http://localhost:8080/api/fast/start \
   -H "Content-Type: application/json"
+
+# Mit benutzerdefiniertem Ziel (12 Stunden)
+curl -X POST http://localhost:8080/api/fast/start \
+  -H "Content-Type: application/json" \
+  -d '{"goalHours": 12}'
 ```
 
 **Response (200 OK):**
@@ -94,9 +107,15 @@ curl -X POST http://localhost:8080/api/fast/start \
   "id": 1,
   "startAt": "2025-08-09T10:30:00Z",
   "endAt": null,
+  "goalHours": 12,
   "duration": "PT4H30M"
 }
 ```
+
+**Validierung:**
+- `goalHours`: 1-48 Stunden (Integer)
+- Standard: 16 Stunden wenn nicht angegeben
+- **Error (400 Bad Request):** Bei ungültigen goalHours (< 1 oder > 48)
 
 ---
 
@@ -120,6 +139,7 @@ curl -X POST http://localhost:8080/api/fast/stop \
   "id": 1,
   "startAt": "2025-08-09T10:30:00Z",
   "endAt": "2025-08-09T18:30:00Z",
+  "goalHours": 12,
   "duration": "PT8H"
 }
 ```
@@ -142,7 +162,7 @@ curl -X POST http://localhost:8080/api/fast/stop \
 GET /api/fast/status
 ```
 
-**Beschreibung:** Gibt den Status der aktuellen Fasten-Session zurück (aktiv/inaktiv mit Dauer).
+**Beschreibung:** Gibt den Status der aktuellen Fasten-Session zurück (aktiv/inaktiv mit Dauer, Ziel und Fortschritt).
 
 **cURL Beispiel:**
 ```bash
@@ -155,7 +175,9 @@ curl -X GET http://localhost:8080/api/fast/status
   "active": true,
   "hours": 4,
   "minutes": 30,
-  "since": "2025-08-09T10:30:00Z"
+  "since": "2025-08-09T10:30:00Z",
+  "goalHours": 12,
+  "progressPercent": 37.5
 }
 ```
 
@@ -187,12 +209,14 @@ curl -X GET http://localhost:8080/api/fast/history
     "id": 1,
     "startAt": "2025-08-08T20:00:00Z",
     "endAt": "2025-08-09T14:00:00Z",
+    "goalHours": 16,
     "duration": "PT18H"
   },
   {
     "id": 2,
     "startAt": "2025-08-09T10:30:00Z",
     "endAt": null,
+    "goalHours": 12,
     "duration": "PT4H30M"
   }
 ]
@@ -255,6 +279,7 @@ curl -X GET http://localhost:8080/actuator/info
   "id": "Long - Eindeutige ID der Fasten-Session",
   "startAt": "Instant - Startzeitpunkt der Fasten-Session (ISO 8601)",
   "endAt": "Instant - Endzeitpunkt (null wenn noch aktiv, ISO 8601)",
+  "goalHours": "Integer - Ziel-Stunden für die Session (1-48, Standard: 16)",
   "duration": "Duration - Berechnete Dauer (ISO 8601 Format)"
 }
 ```
@@ -262,7 +287,27 @@ curl -X GET http://localhost:8080/actuator/info
 **Beispiel-Werte:**
 - `startAt`: `"2025-08-09T10:30:00Z"`
 - `endAt`: `"2025-08-09T18:30:00Z"` oder `null`
+- `goalHours`: `12` (Integer zwischen 1 und 48)
 - `duration`: `"PT8H"` (8 Stunden) oder `"PT4H30M"` (4 Stunden 30 Minuten)
+
+### FastStatusResponse
+```json
+{
+  "active": "Boolean - Ob eine Session aktiv ist",
+  "hours": "Integer - Stunden seit Start (nur wenn aktiv)",
+  "minutes": "Integer - Minuten seit Start (nur wenn aktiv)", 
+  "since": "String - Startzeitpunkt ISO 8601 (nur wenn aktiv)",
+  "goalHours": "Integer - Ziel-Stunden der aktiven Session (nur wenn aktiv)",
+  "progressPercent": "Double - Fortschritt in Prozent zum Ziel (nur wenn aktiv)"
+}
+```
+
+### StartFastRequest  
+```json
+{
+  "goalHours": "Integer - Optional, Ziel-Stunden (1-48, Standard: 16)"
+}
+```
 
 ---
 
@@ -284,10 +329,20 @@ docker compose up --build
 ## 📝 Entwickler-Notizen für Copilot
 
 ### Wichtige Endpunkte für Integration:
-1. **`POST /api/fast/start`** - Session starten
+1. **`POST /api/fast/start`** - Session starten (mit optionalem goalHours)
 2. **`POST /api/fast/stop`** - Session beenden  
-3. **`GET /api/fast/status`** - Aktueller Status
-4. **`GET /api/fast/history`** - Alle Sessions
+3. **`GET /api/fast/status`** - Aktueller Status (mit goalHours und progressPercent)
+4. **`GET /api/fast/history`** - Alle Sessions (mit goalHours)
+
+### Request/Response Beispiele:
+**Start Request:** `{"goalHours": 12}` (optional)
+**Status Response:** `{"active": true, "hours": 8, "minutes": 30, "goalHours": 12, "progressPercent": 70.8}`
+
+### Ziel-System Features:
+- **goalHours:** 1-48 Stunden Validierung
+- **Standard:** 16 Stunden wenn nicht angegeben
+- **progressPercent:** Automatische Berechnung basierend auf aktueller Zeit vs. Ziel
+- **Database:** goal_hours Spalte mit Default 16 und Check Constraint
 
 ### Error Handling:
 - `400 Bad Request` - Wenn keine aktive Session zum Stoppen vorhanden ist
@@ -334,11 +389,12 @@ docker compose down -v && docker compose up -d
 ### Vue.js/TypeScript Interfaces
 
 ```typescript
-// TypeScript Interfaces für Vue.js Frontend-Integration
+// Vue.js/TypeScript Interfaces für Vue.js Frontend-Integration
 interface FastSession {
   id: number;
   startAt: string; // ISO 8601 DateTime
   endAt: string | null; // ISO 8601 DateTime oder null
+  goalHours: number; // Ziel-Stunden (1-48)
   duration: string; // ISO 8601 Duration (z.B. "PT8H30M")
 }
 
@@ -347,6 +403,12 @@ interface FastStatus {
   hours?: number;
   minutes?: number;
   since?: string; // ISO 8601 DateTime
+  goalHours?: number; // Ziel-Stunden der aktiven Session
+  progressPercent?: number; // Fortschritt in Prozent (0-100)
+}
+
+interface StartFastRequest {
+  goalHours?: number; // Optional, 1-48 Stunden, Standard: 16
 }
 
 interface ApiError {
@@ -376,12 +438,19 @@ import { ref, reactive } from 'vue';
 class FastingApiService {
   private baseUrl = 'http://localhost:8080/api/fast';
 
-  async startSession(): Promise<FastSession> {
+  async startSession(goalHours?: number): Promise<FastSession> {
+    const body = goalHours ? JSON.stringify({ goalHours }) : null;
     const response = await fetch(`${this.baseUrl}/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body
     });
-    if (!response.ok) throw new Error('Failed to start session');
+    if (!response.ok) {
+      if (response.status === 400) {
+        throw new Error('Ungültige goalHours (1-48 Stunden erlaubt)');
+      }
+      throw new Error('Failed to start session');
+    }
     return response.json();
   }
 
@@ -479,11 +548,11 @@ export const useFastingService = () => {
     }
   };
 
-  const startSession = async () => {
+  const startSession = async (goalHours?: number) => {
     try {
       isLoading.value = true;
       error.value = null;
-      const session = await fastingApi.startSession();
+      const session = await fastingApi.startSession(goalHours);
       currentSession.value = session;
       await refreshStatus();
     } catch (err) {
