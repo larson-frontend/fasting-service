@@ -13,6 +13,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/fast")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:8000", "http://localhost:4200"})
 @Tag(name = "Fasting", description = "API zur Verwaltung von Fasten-Sessions")
 public class FastController {
     private final FastService service;
