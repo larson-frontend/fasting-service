@@ -27,8 +27,12 @@ public class FastService {
     }
 
     public FastSession start(StartFastRequest request) {
+        Optional<FastSession> activeSession = getActive();
+        if (activeSession.isPresent()) {
+            throw new IllegalStateException("Es läuft bereits eine Fasten-Session. Stoppen Sie diese zuerst mit /api/fast/stop");
+        }
         Integer goalHours = request.getGoalHours();
-        return getActive().orElseGet(() -> repo.save(new FastSession(Instant.now(), goalHours)));
+        return repo.save(new FastSession(Instant.now(), goalHours));
     }
 
     public FastSession stop() {

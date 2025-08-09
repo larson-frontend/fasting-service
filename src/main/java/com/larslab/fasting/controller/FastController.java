@@ -10,6 +10,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import jakarta.validation.Valid;
 import java.util.*;
 
@@ -66,5 +68,15 @@ public class FastController {
     })
     public List<FastSession> history() {
         return service.history();
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleIllegalStateException(IllegalStateException e) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Conflict");
+        error.put("message", e.getMessage());
+        error.put("status", "409");
+        return error;
     }
 }
