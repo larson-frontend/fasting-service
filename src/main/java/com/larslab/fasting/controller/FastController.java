@@ -16,27 +16,34 @@ import java.util.*;
 @Tag(name = "Fasting", description = "API zur Verwaltung von Fasten-Sessions")
 public class FastController {
     private final FastService service;
-    public FastController(FastService service) { this.service = service; }
+
+    public FastController(FastService service) {
+        this.service = service;
+    }
 
     @PostMapping("/start")
     @Operation(summary = "Neue Fasten-Session starten", description = "Startet eine neue Fasten-Session oder gibt die bereits aktive Session zurück")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet oder bereits aktiv")
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet oder bereits aktiv")
     })
-    public FastSession start() { return service.start(); }
+    public FastSession start() {
+        return service.start();
+    }
 
     @PostMapping("/stop")
     @Operation(summary = "Aktive Fasten-Session beenden", description = "Beendet die aktuell aktive Fasten-Session")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
-        @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden")
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
+            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden")
     })
-    public FastSession stop() { return service.stop(); }
+    public FastSession stop() {
+        return service.stop();
+    }
 
     @GetMapping("/status")
     @Operation(summary = "Status der aktuellen Fasten-Session", description = "Gibt den Status der aktuellen Fasten-Session zurück (aktiv/inaktiv mit Dauer)")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen")
     })
     public Map<String, Object> status() {
         Map<String, Object> m = new HashMap<>();
@@ -53,7 +60,9 @@ public class FastController {
     @GetMapping("/history")
     @Operation(summary = "Historie aller Fasten-Sessions", description = "Gibt eine Liste aller bisherigen Fasten-Sessions zurück")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen")
     })
-    public List<FastSession> history() { return service.history(); }
+    public List<FastSession> history() {
+        return service.history();
+    }
 }
