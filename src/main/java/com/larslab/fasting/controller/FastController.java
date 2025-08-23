@@ -1,7 +1,9 @@
 package com.larslab.fasting.controller;
 
 import com.larslab.fasting.model.FastSession;
+import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.FastService;
+import com.larslab.fasting.service.UserService;
 import com.larslab.fasting.dto.StartFastRequest;
 import com.larslab.fasting.dto.FastStatusResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import jakarta.validation.Valid;
 import java.util.*;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/fast")
@@ -22,9 +25,11 @@ import java.util.*;
 @Validated
 public class FastController {
     private final FastService service;
+    private final UserService userService;
 
-    public FastController(FastService service) {
+    public FastController(FastService service, UserService userService) {
         this.service = service;
+        this.userService = userService;
     }
 
     @PostMapping("/start")
@@ -68,6 +73,86 @@ public class FastController {
     })
     public List<FastSession> history() {
         return service.history();
+    }
+
+    // User-specific endpoints for cross-device login
+    @GetMapping("/user/{identifier}/status")
+    @Operation(summary = "Status der aktuellen Fasten-Session für spezifischen User", 
+               description = "Gibt den Status der aktuellen Fasten-Session für einen spezifischen User zurück (über Username oder Email)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastStatusResponse> statusByUser(@PathVariable String identifier) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(service.getStatus(user.get()));
+    }
+
+    @GetMapping("/user/{identifier}/history")
+    @Operation(summary = "Historie aller Fasten-Sessions für spezifischen User", 
+               description = "Gibt eine Liste aller bisherigen Fasten-Sessions für einen spezifischen User zurück (über Username oder Email)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<List<FastSession>> historyByUser(@PathVariable String identifier) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(service.history(user.get()));
+    }
+
+    @PostMapping("/user/{identifier}/start")
+    @Operation(summary = "Neue Fasten-Session für spezifischen User starten", 
+               description = "Startet eine neue Fasten-Session für einen spezifischen User mit optionalem Ziel")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet"),
+            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten oder User bereits aktiv"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastSession> startByUser(@PathVariable String identifier, 
+                                                   @Valid @RequestBody(required = false) StartFastRequest request) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        if (request == null) {
+            request = new StartFastRequest(16); // Default 16 Stunden
+        }
+        
+        try {
+            FastSession session = service.start(user.get(), request);
+            return ResponseEntity.ok(session);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/user/{identifier}/stop")
+    @Operation(summary = "Aktive Fasten-Session für spezifischen User beenden", 
+               description = "Beendet die aktuell aktive Fasten-Session für einen spezifischen User")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
+            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastSession> stopByUser(@PathVariable String identifier) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            FastSession session = service.stop(user.get());
+            return ResponseEntity.ok(session);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @ExceptionHandler(IllegalStateException.class)
