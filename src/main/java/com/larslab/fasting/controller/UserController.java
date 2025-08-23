@@ -29,14 +29,14 @@ public class UserController {
     
     @PostMapping("/login-or-create")
     @Operation(summary = "Login or create user", 
-               description = "Creates a new user if they don't exist, or logs in existing user. Idempotent operation.")
+               description = "Creates a new user if they don't exist, or logs in existing user. The 'username' field can contain either a username or email address.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User logged in successfully"),
             @ApiResponse(responseCode = "201", description = "New user created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
-            @ApiResponse(responseCode = "409", description = "Email already exists with different username")
+            @ApiResponse(responseCode = "409", description = "Username or email already exists")
     })
-    public ResponseEntity<LoginOrCreateResponse> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
+    public ResponseEntity<?> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
         try {
             User user = userService.loginOrCreateUser(request);
             LoginOrCreateResponse response = new LoginOrCreateResponse(user);
@@ -47,8 +47,52 @@ public class UserController {
             
             return ResponseEntity.status(status).body(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            // Return specific error message for better frontend handling
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("timestamp", java.time.Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
         }
+    }
+    
+    @GetMapping("/find/{identifier}")
+    @Operation(summary = "Find user by identifier", 
+               description = "Find user by username or email address")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User found"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<UserResponse> findUserByIdentifier(@PathVariable String identifier) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        
+        if (user.isPresent()) {
+            return ResponseEntity.ok(new UserResponse(user.get()));
+        } else {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @GetMapping("/check-availability")
+    @Operation(summary = "Check username/email availability", 
+               description = "Check if username or email is already taken")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Availability checked")
+    })
+    public ResponseEntity<Map<String, Object>> checkAvailability(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String email) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        if (username != null && !username.trim().isEmpty()) {
+            response.put("usernameAvailable", !userService.getUserByUsername(username.trim()).isPresent());
+        }
+        
+        if (email != null && !email.trim().isEmpty()) {
+            response.put("emailAvailable", !userService.getUserByEmail(email.trim().toLowerCase()).isPresent());
+        }
+        
+        return ResponseEntity.ok(response);
     }
     
     @GetMapping("/current")
