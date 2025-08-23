@@ -11,6 +11,11 @@ public class FastSession {
     @Schema(description = "Eindeutige ID der Fasten-Session", example = "1")
     private Long id;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    @Schema(description = "User who owns this fasting session")
+    private User user;
+    
     @Schema(description = "Startzeitpunkt der Fasten-Session", example = "2024-01-01T10:00:00Z")
     private Instant startAt;
     
@@ -35,8 +40,15 @@ public class FastSession {
         this.startAt = startAt; 
         this.goalHours = goalHours != null ? goalHours : 16;
     }
+    public FastSession(User user, Instant startAt, Integer goalHours) { 
+        this.user = user;
+        this.startAt = startAt; 
+        this.goalHours = goalHours != null ? goalHours : 16;
+    }
 
     public Long getId() { return id; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
     public Instant getStartAt() { return startAt; }
     public void setStartAt(Instant startAt) { this.startAt = startAt; }
     public Instant getEndAt() { return endAt; }

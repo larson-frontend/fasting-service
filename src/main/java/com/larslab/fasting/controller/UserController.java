@@ -1,0 +1,131 @@
+package com.larslab.fasting.controller;
+
+import com.larslab.fasting.model.User;
+import com.larslab.fasting.service.UserService;
+import com.larslab.fasting.dto.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import java.util.*;
+
+@RestController
+@RequestMapping("/api/users")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "http://localhost:8000", "http://localhost:8080", "http://localhost:4200"})
+@Tag(name = "User Management", description = "APIs for user authentication and preference management")
+@Validated
+public class UserController {
+    
+    private final UserService userService;
+    
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
+    
+    @PostMapping("/login-or-create")
+    @Operation(summary = "Login or create user", 
+               description = "Creates a new user if they don't exist, or logs in existing user. Idempotent operation.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User logged in successfully"),
+            @ApiResponse(responseCode = "201", description = "New user created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "409", description = "Email already exists with different username")
+    })
+    public ResponseEntity<LoginOrCreateResponse> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
+        try {
+            User user = userService.loginOrCreateUser(request);
+            LoginOrCreateResponse response = new LoginOrCreateResponse(user);
+            
+            // Return 201 for new users, 200 for existing users
+            HttpStatus status = user.getCreatedAt().equals(user.getLastLoginAt()) ? 
+                    HttpStatus.CREATED : HttpStatus.OK;
+            
+            return ResponseEntity.status(status).body(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+    
+    @GetMapping("/current")
+    @Operation(summary = "Get current user", 
+               description = "Returns the current authenticated user. For now, returns the first user as there's no authentication yet.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User found"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<UserResponse> getCurrentUser(@RequestParam(required = false, defaultValue = "1") String userId) {
+        // TODO: Replace with actual authentication when implemented
+        // For now, we'll use a userId parameter or default to user ID 1
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            
+            if (user.isPresent()) {
+                return ResponseEntity.ok(new UserResponse(user.get()));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PatchMapping("/preferences")
+    @Operation(summary = "Update user preferences", 
+               description = "Updates user preferences like language, theme, and notification settings")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Preferences updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request data"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<UserResponse> updatePreferences(
+            @RequestParam(required = false, defaultValue = "1") String userId,
+            @Valid @RequestBody UpdatePreferencesRequest request) {
+        try {
+            Long id = Long.parseLong(userId);
+            User updatedUser = userService.updatePreferences(id, request);
+            return ResponseEntity.ok(new UserResponse(updatedUser));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @PatchMapping("/language")
+    @Operation(summary = "Update user language", 
+               description = "Quick endpoint to update just the user's language preference")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Language updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid language code"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<UserResponse> updateLanguage(
+            @RequestParam(required = false, defaultValue = "1") String userId,
+            @Valid @RequestBody UpdateLanguageRequest request) {
+        try {
+            Long id = Long.parseLong(userId);
+            User updatedUser = userService.updateLanguage(id, request);
+            return ResponseEntity.ok(new UserResponse(updatedUser));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleIllegalArgumentException(IllegalArgumentException e) {
+        Map<String, String> error = new HashMap<>();
+        error.put("error", "Bad Request");
+        error.put("message", e.getMessage());
+        error.put("status", "400");
+        return error;
+    }
+}
