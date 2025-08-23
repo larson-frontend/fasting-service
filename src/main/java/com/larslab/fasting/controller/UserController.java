@@ -2,6 +2,7 @@ package com.larslab.fasting.controller;
 
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.UserService;
+import com.larslab.fasting.security.JwtService;
 import com.larslab.fasting.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -22,14 +23,16 @@ import java.util.*;
 public class UserController {
     
     private final UserService userService;
+    private final JwtService jwtService;
     
-    public UserController(UserService userService) {
+    public UserController(UserService userService, JwtService jwtService) {
         this.userService = userService;
+        this.jwtService = jwtService;
     }
     
     @PostMapping("/login-or-create")
     @Operation(summary = "Login or create user", 
-               description = "Creates a new user if they don't exist, or logs in existing user. The 'username' field can contain either a username or email address.")
+               description = "Creates a new user if they don't exist, or logs in existing user. The 'username' field can contain either a username or email address. Returns a JWT token for authentication.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User logged in successfully"),
             @ApiResponse(responseCode = "201", description = "New user created successfully"),
@@ -39,7 +42,11 @@ public class UserController {
     public ResponseEntity<?> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
         try {
             User user = userService.loginOrCreateUser(request);
-            LoginOrCreateResponse response = new LoginOrCreateResponse(user);
+            
+            // Generate JWT token for the user
+            String jwtToken = jwtService.generateToken(user.getUsername());
+            
+            LoginOrCreateResponse response = new LoginOrCreateResponse(user, jwtToken);
             
             // Return 201 for new users, 200 for existing users
             HttpStatus status = user.getCreatedAt().equals(user.getLastLoginAt()) ? 

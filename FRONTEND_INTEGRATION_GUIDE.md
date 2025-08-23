@@ -1,8 +1,26 @@
 # Frontend Integration Guide - Fasting Service API
 
-## 🚀 API Status: READY FOR FRONTEND INTEGRATION
+## � **CRITICAL UPDATE: JWT Security Implementation**
 
-Your Spring Boot backend is successfully running at **http://localhost:8080** with PostgreSQL database.
+**⚠️ BREAKING CHANGES ALERT**: User-specific endpoints now require JWT authentication for security!
+
+Your Spring Boot backend is successfully running at **http://localhost:8080** with PostgreSQL database and **JWT Security**.
+
+---
+
+## 🔒 **URGENT: Security Changes Required**
+
+### **What Changed:**
+- ✅ JWT authentication implemented for user-specific endpoints
+- ✅ All `/api/fast/user/**` endpoints now require Authorization header
+- ✅ Login endpoint now returns JWT tokens
+- ✅ Users can only access their own data (privacy protected)
+
+### **Frontend Updates Required:**
+1. **Store JWT tokens from login response**
+2. **Send Authorization headers with user-specific requests** 
+3. **Handle 401/403 authentication errors**
+4. **Update API call patterns**
 
 ---
 
@@ -149,68 +167,196 @@ const history = await fetch('http://localhost:8080/api/fast/history')
   .then(res => res.json());
 ```
 
-### 5. **User-Specific Fasting Management** ✅ **(Cross-Device Login Support)**
+### 5. **JWT Authentication & Authorization** ✅ **(NEW - REQUIRED FOR SECURITY)**
 
-These endpoints support cross-device login by using username or email to fetch user-specific data:
+#### **Updated Login Response - Now Returns JWT Token:**
+```javascript
+// ✅ NEW: Login now returns JWT token
+const loginResponse = await fetch('http://localhost:8080/api/users/login-or-create', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: userInput }) // single field (username OR email)
+});
+
+const { user, token } = await loginResponse.json();
+
+// 🚨 CRITICAL: Store JWT token for authenticated requests
+localStorage.setItem('authToken', token);
+localStorage.setItem('currentUser', JSON.stringify(user));
+```
+
+#### **Response Format:**
+```json
+{
+  "user": {
+    "id": "123",
+    "username": "john_doe", 
+    "email": "john@example.com",
+    "createdAt": "2025-08-23T23:18:06.599Z",
+    "lastLoginAt": "2025-08-23T23:18:06.599Z",
+    "preferences": { "language": "en", "theme": "system", ... }
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." // JWT Token (24h expiry)
+}
+```
+
+### 6. **User-Specific Fasting Management** ✅ **(SECURED - JWT REQUIRED)**
+
+**🚨 BREAKING CHANGE**: These endpoints now require JWT authentication:
 
 #### **GET /api/fast/user/{identifier}/status** - Get User's Current Fast Status
 ```javascript
-// Login from any device with username or email
+// ❌ OLD (No longer works - returns 401 Unauthorized):
 const getUserStatus = async (userIdentifier) => {
   const status = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/status`)
     .then(res => res.json());
   return status;
 };
 
-// Examples:
-await getUserStatus('john_doe');           // by username
-await getUserStatus('john@example.com');   // by email
+// ✅ NEW (Required - with JWT authentication):
+const getUserStatus = async (userIdentifier) => {
+  const authToken = localStorage.getItem('authToken');
+  
+  const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/status`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (response.status === 401) {
+    // Token expired or invalid - redirect to login
+    throw new Error('Authentication required');
+  }
+  
+  if (response.status === 403) {
+    // User trying to access someone else's data
+    throw new Error('Access denied - you can only access your own data');
+  }
+  
+  return response.json();
+};
 ```
 
 #### **GET /api/fast/user/{identifier}/history** - Get User's Fasting History
 ```javascript
 const getUserHistory = async (userIdentifier) => {
-  const history = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/history`)
-    .then(res => res.json());
-  return history;
+  const authToken = localStorage.getItem('authToken');
+  
+  const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/history`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Authentication required');
+    if (response.status === 403) throw new Error('Access denied');
+    throw new Error('Failed to fetch history');
+  }
+  
+  return response.json();
 };
 ```
 
 #### **POST /api/fast/user/{identifier}/start** - Start Fast for Specific User
 ```javascript
 const startUserFast = async (userIdentifier, goalHours = 16) => {
-  const newFast = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/start`, {
+  const authToken = localStorage.getItem('authToken');
+  
+  const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({ goalHours })
-  }).then(res => res.json());
-  return newFast;
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Authentication required');
+    if (response.status === 403) throw new Error('Access denied');
+    if (response.status === 400) throw new Error('Cannot start - fast already active');
+    throw new Error('Failed to start fast');
+  }
+  
+  return response.json();
 };
 ```
 
 #### **POST /api/fast/user/{identifier}/stop** - Stop User's Active Fast
 ```javascript
 const stopUserFast = async (userIdentifier) => {
-  const completedFast = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/stop`, {
-    method: 'POST'
-  }).then(res => res.json());
-  return completedFast;
+  const authToken = localStorage.getItem('authToken');
+  
+  const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userIdentifier)}/stop`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Authentication required');
+    if (response.status === 403) throw new Error('Access denied');
+    if (response.status === 400) throw new Error('No active fast to stop');
+    throw new Error('Failed to stop fast');
+  }
+  
+  return response.json();
 };
 ```
+
+### 7. **Security Status Matrix**
+
+| Endpoint | Authentication | Authorization | Status |
+|----------|---------------|---------------|---------|
+| `POST /api/users/login-or-create` | ❌ Public | ❌ None | ✅ Working |
+| `GET /api/users/check-availability` | ❌ Public | ❌ None | ✅ Working |
+| `GET /api/users/find/{identifier}` | ❌ Public | ❌ None | ✅ Working |
+| `GET /api/fast/user/{id}/status` | ✅ JWT Required | ✅ User must match | 🚨 **UPDATED** |
+| `GET /api/fast/user/{id}/history` | ✅ JWT Required | ✅ User must match | 🚨 **UPDATED** |
+| `POST /api/fast/user/{id}/start` | ✅ JWT Required | ✅ User must match | 🚨 **UPDATED** |
+| `POST /api/fast/user/{id}/stop` | ✅ JWT Required | ✅ User must match | 🚨 **UPDATED** |
 
 ---
 
 ## 💾 Data Models for Frontend
 
+### Login/Create Response Model (UPDATED)
+```typescript
+interface LoginOrCreateResponse {
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    createdAt: string;
+    lastLoginAt: string;
+    preferences: {
+      language: 'en' | 'de';
+      theme: 'light' | 'dark' | 'system';
+      notifications: {
+        fastingReminders: boolean;
+        mealReminders: boolean;
+        progressUpdates: boolean;
+      };
+    };
+  };
+  token: string; // 🚨 NEW: JWT token for authentication (24h expiry)
+}
+```
+
 ### User Model
 ```typescript
 interface User {
-  id: number;
-  name: string;
+  id: string;
+  username: string;
   email: string;
-  age: number;
   createdAt: string;
-  updatedAt: string;
+  lastLoginAt: string;
+  preferences: UserPreferences;
 }
 ```
 
@@ -244,52 +390,84 @@ interface FastStatusResponse {
 
 ## 🎯 Frontend Implementation Examples
 
-### Cross-Device Login & Data Sync
+### 🚨 **UPDATED: Secure Cross-Device Login with JWT Authentication**
+
 ```typescript
 import { useState, useEffect } from 'react';
 
 interface UserSession {
   user: User;
+  token: string;
   currentFast?: FastSession;
   fastingHistory: FastSession[];
 }
 
-const useCrossDeviceLogin = () => {
+const useSecureCrossDeviceLogin = () => {
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Login with username or email from any device
+  // 🚨 UPDATED: Login with JWT token handling
   const loginUser = async (identifier: string): Promise<boolean> => {
     setLoading(true);
     try {
-      // Step 1: Get user data
-      const userResponse = await fetch(`http://localhost:8080/api/users/find/${encodeURIComponent(identifier)}`);
-      if (!userResponse.ok) {
-        console.error('User not found');
-        return false;
-      }
-      const user = await userResponse.json();
-
-      // Step 2: Get current fasting status
-      const statusResponse = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(identifier)}/status`);
-      const fastStatus = await statusResponse.json();
-
-      // Step 3: Get fasting history
-      const historyResponse = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(identifier)}/history`);
-      const fastingHistory = await historyResponse.json();
-
-      // Step 4: Create complete user session
-      setUserSession({
-        user,
-        currentFast: fastStatus.isActive ? fastStatus : undefined,
-        fastingHistory
+      // Step 1: Login and get JWT token
+      const loginResponse = await fetch('http://localhost:8080/api/users/login-or-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: identifier })
       });
 
-      // Step 5: Save to localStorage for offline access
-      localStorage.setItem('fastingUserSession', JSON.stringify({
+      if (!loginResponse.ok) {
+        throw new Error('Login failed');
+      }
+
+      const { user, token } = await loginResponse.json();
+
+      if (!token) {
+        throw new Error('No authentication token received');
+      }
+
+      // Step 2: Get current fasting status (with JWT)
+      const statusResponse = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(identifier)}/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      let currentFast = undefined;
+      if (statusResponse.ok) {
+        const fastStatus = await statusResponse.json();
+        currentFast = fastStatus.active ? fastStatus : undefined;
+      }
+
+      // Step 3: Get fasting history (with JWT)
+      const historyResponse = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(identifier)}/history`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      let fastingHistory = [];
+      if (historyResponse.ok) {
+        fastingHistory = await historyResponse.json();
+      }
+
+      // Step 4: Create secure user session
+      const session = {
         user,
-        currentFast: fastStatus.isActive ? fastStatus : undefined,
-        fastingHistory,
+        token,
+        currentFast,
+        fastingHistory
+      };
+
+      setUserSession(session);
+
+      // Step 5: Save to localStorage with JWT token
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('fastingUserSession', JSON.stringify({
+        ...session,
         lastSync: new Date().toISOString()
       }));
 
@@ -302,16 +480,25 @@ const useCrossDeviceLogin = () => {
     }
   };
 
-  // Start fasting session for current user
+  // 🚨 UPDATED: Start fasting with JWT authentication
   const startFasting = async (goalHours: number = 16): Promise<boolean> => {
-    if (!userSession?.user) return false;
+    if (!userSession?.user || !userSession?.token) return false;
 
     try {
       const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userSession.user.username)}/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${userSession.token}`,
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({ goalHours })
       });
+
+      if (response.status === 401) {
+        // Token expired - force re-login
+        handleTokenExpired();
+        return false;
+      }
 
       if (response.ok) {
         const newFast = await response.json();
@@ -324,14 +511,24 @@ const useCrossDeviceLogin = () => {
     return false;
   };
 
-  // Stop current fasting session
+  // 🚨 UPDATED: Stop fasting with JWT authentication
   const stopFasting = async (): Promise<boolean> => {
-    if (!userSession?.user) return false;
+    if (!userSession?.user || !userSession?.token) return false;
 
     try {
       const response = await fetch(`http://localhost:8080/api/fast/user/${encodeURIComponent(userSession.user.username)}/stop`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userSession.token}`,
+          'Content-Type': 'application/json'
+        }
       });
+
+      if (response.status === 401) {
+        // Token expired - force re-login
+        handleTokenExpired();
+        return false;
+      }
 
       if (response.ok) {
         const completedFast = await response.json();
@@ -348,21 +545,33 @@ const useCrossDeviceLogin = () => {
     return false;
   };
 
-  // Load user session from localStorage on app start
+  // 🚨 NEW: Handle token expiration
+  const handleTokenExpired = () => {
+    setUserSession(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('fastingUserSession');
+    // Optionally trigger re-login UI
+  };
+
+  // 🚨 UPDATED: Load user session with token validation
   useEffect(() => {
     const savedSession = localStorage.getItem('fastingUserSession');
-    if (savedSession) {
+    const authToken = localStorage.getItem('authToken');
+    
+    if (savedSession && authToken) {
       try {
         const session = JSON.parse(savedSession);
-        setUserSession(session);
         
-        // Optionally refresh data from server
-        if (session.user) {
-          loginUser(session.user.username);
+        // Check if token is still valid (basic check)
+        if (session.user && authToken) {
+          setUserSession({ ...session, token: authToken });
+          
+          // Optionally validate token with server
+          // validateTokenWithServer(authToken);
         }
       } catch (error) {
         console.error('Error loading saved session:', error);
-        localStorage.removeItem('fastingUserSession');
+        handleTokenExpired();
       }
     }
   }, []);
@@ -375,20 +584,24 @@ const useCrossDeviceLogin = () => {
     stopFasting,
     logout: () => {
       setUserSession(null);
+      localStorage.removeItem('authToken');
       localStorage.removeItem('fastingUserSession');
-    }
+    },
+    isAuthenticated: !!userSession?.token
   };
 };
 
-// Usage in React component
-const FastingApp = () => {
-  const { userSession, loading, loginUser, startFasting, stopFasting, logout } = useCrossDeviceLogin();
+// 🚨 UPDATED: Usage in React component with JWT
+const SecureFastingApp = () => {
+  const { userSession, loading, loginUser, startFasting, stopFasting, logout, isAuthenticated } = useSecureCrossDeviceLogin();
   const [loginInput, setLoginInput] = useState('');
+  const [error, setError] = useState('');
 
-  if (!userSession) {
+  if (!isAuthenticated || !userSession) {
     return (
       <div>
-        <h2>Login to Fasting App</h2>
+        <h2>Secure Login to Fasting App</h2>
+        {error && <div style={{color: 'red'}}>{error}</div>}
         <input
           type="text"
           placeholder="Enter username or email"
@@ -396,10 +609,16 @@ const FastingApp = () => {
           onChange={(e) => setLoginInput(e.target.value)}
         />
         <button 
-          onClick={() => loginUser(loginInput)}
+          onClick={async () => {
+            setError('');
+            const success = await loginUser(loginInput);
+            if (!success) {
+              setError('Login failed. Please check your username/email.');
+            }
+          }}
           disabled={loading || !loginInput.trim()}
         >
-          {loading ? 'Logging in...' : 'Login'}
+          {loading ? 'Logging in...' : 'Secure Login'}
         </button>
       </div>
     );
@@ -407,7 +626,8 @@ const FastingApp = () => {
 
   return (
     <div>
-      <h1>Welcome back, {userSession.user.username}!</h1>
+      <h1>Welcome back, {userSession.user.username}! 🔒</h1>
+      <p><small>Authenticated with JWT token</small></p>
       <button onClick={logout}>Logout</button>
       
       {userSession.currentFast ? (
@@ -551,7 +771,113 @@ export const useFastingService = () => {
 
 ---
 
-## 🔒 Security Considerations for Frontend
+## 🧪 **Security Testing & Validation**
+
+### **� CRITICAL: Test These Security Scenarios**
+
+#### **1. Test JWT Token Generation:**
+```bash
+# Should return JWT token
+curl -X POST http://localhost:8080/api/users/login-or-create \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser123"}' | jq .
+
+# Expected response:
+# {
+#   "user": { "id": "123", "username": "testuser123", ... },
+#   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+# }
+```
+
+#### **2. Test Secured Endpoints (Should Fail Without JWT):**
+```bash
+# Should return 401 Unauthorized
+curl -X GET http://localhost:8080/api/fast/user/testuser123/status
+
+# Expected: {"timestamp":"...","status":401,"error":"Unauthorized",...}
+```
+
+#### **3. Test Secured Endpoints (Should Work With JWT):**
+```bash
+# Replace YOUR_JWT_TOKEN with actual token from login
+curl -X GET http://localhost:8080/api/fast/user/testuser123/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Expected: Fasting status data
+```
+
+#### **4. Test Authorization (Wrong User Access):**
+```bash
+# Login as user1, try to access user2's data
+# Should return 403 Forbidden
+curl -X GET http://localhost:8080/api/fast/user/differentuser/status \
+  -H "Authorization: Bearer USER1_JWT_TOKEN"
+
+# Expected: {"timestamp":"...","status":403,"error":"Forbidden",...}
+```
+
+### **🔧 Frontend Testing Checklist**
+
+#### **Login & Token Storage:**
+- [ ] ✅ Login returns JWT token
+- [ ] ✅ Token is stored in localStorage
+- [ ] ✅ Token is sent with user-specific API calls
+- [ ] ✅ Handle missing/invalid token (401 errors)
+- [ ] ✅ Handle unauthorized access (403 errors)
+
+#### **Cross-Device Sync:**
+- [ ] ✅ Login on Device A, access data on Device B
+- [ ] ✅ User can only see their own fasting data
+- [ ] ✅ Cannot access other users' data
+- [ ] ✅ Token expiration handled gracefully
+
+#### **Error Handling:**
+- [ ] ✅ 401 errors trigger re-login
+- [ ] ✅ 403 errors show access denied message
+- [ ] ✅ Network errors handled appropriately
+- [ ] ✅ Invalid tokens clear localStorage
+
+---
+
+## ✅ **Backend Security Implementation Status**
+
+### **🔒 JWT Security - COMPLETED & TESTED**
+
+The backend has been successfully secured with JWT authentication. All user-specific endpoints now require valid authentication tokens:
+
+#### **✅ Verified Security Features:**
+- **Token Generation**: Login/registration returns JWT tokens with 24-hour expiration
+- **Endpoint Protection**: All `/api/fast/user/**` endpoints require JWT authentication
+- **Cross-User Security**: Users cannot access other users' fasting data (403 Forbidden)
+- **Unauthorized Access**: Missing/invalid tokens return 401/403 error responses
+- **CORS Support**: All necessary headers including Authorization are properly configured
+
+#### **🚨 Frontend Action Required:**
+Your frontend team must immediately update the application to:
+1. Store JWT tokens from login responses
+2. Include `Authorization: Bearer <token>` headers for all user-specific API calls
+3. Handle 401/403 error responses appropriately
+4. Implement token refresh/re-login flows
+
+**⚠️ BREAKING CHANGE**: Without these updates, all user-specific functionality will fail with 401/403 errors.
+
+---
+
+## 📋 **Quick Reference: Testing Commands**
+
+```bash
+# Test token generation
+curl -X POST http://localhost:8080/api/users/login-or-create \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser"}'
+
+# Test unauthorized access (should return 403)
+curl -X GET http://localhost:8080/api/fast/user/testuser/status
+
+# Test authorized access (should return data)
+curl -X GET http://localhost:8080/api/fast/user/testuser/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
 
 ### Input Validation
 All endpoints validate:
