@@ -40,45 +40,101 @@ public class FastController {
 
     @PostMapping("/start")
     @Operation(summary = "Neue Fasten-Session starten", 
-               description = "Startet eine neue Fasten-Session mit optionalem Ziel oder gibt die bereits aktive Session zurück")
+               description = "Startet eine neue Fasten-Session für einen spezifischen User mit optionalem Ziel oder gibt die bereits aktive Session zurück")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet oder bereits aktiv"),
-            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten (goalHours muss zwischen 1 und 48 liegen)")
+            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten (goalHours muss zwischen 1 und 48 liegen)"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastSession start(@Valid @RequestBody(required = false) StartFastRequest request) {
-        if (request == null) {
-            request = new StartFastRequest(16); // Default 16 Stunden
+    public ResponseEntity<FastSession> start(@RequestParam(required = false, defaultValue = "1") String userId,
+                                             @Valid @RequestBody(required = false) StartFastRequest request) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            if (request == null) {
+                request = new StartFastRequest(16); // Default 16 Stunden
+            }
+            
+            try {
+                FastSession session = service.start(user.get(), request);
+                return ResponseEntity.ok(session);
+            } catch (IllegalStateException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
         }
-        return service.start(request);
     }
 
     @PostMapping("/stop")
-    @Operation(summary = "Aktive Fasten-Session beenden", description = "Beendet die aktuell aktive Fasten-Session")
+    @Operation(summary = "Aktive Fasten-Session beenden", description = "Beendet die aktuell aktive Fasten-Session für einen spezifischen User")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
-            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden")
+            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastSession stop() {
-        return service.stop();
+    public ResponseEntity<FastSession> stop(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            try {
+                FastSession session = service.stop(user.get());
+                return ResponseEntity.ok(session);
+            } catch (IllegalStateException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/status")
     @Operation(summary = "Status der aktuellen Fasten-Session", 
-               description = "Gibt den Status der aktuellen Fasten-Session zurück (aktiv/inaktiv mit Dauer und Ziel)")
+               description = "Gibt den Status der aktuellen Fasten-Session für einen spezifischen User zurück (aktiv/inaktiv mit Dauer und Ziel)")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastStatusResponse status() {
-        return service.getStatus();
+    public ResponseEntity<FastStatusResponse> status(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isPresent()) {
+                return ResponseEntity.ok(service.getStatus(user.get()));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/history")
-    @Operation(summary = "Historie aller Fasten-Sessions", description = "Gibt eine Liste aller bisherigen Fasten-Sessions zurück")
+    @Operation(summary = "Historie aller Fasten-Sessions", description = "Gibt eine Liste aller bisherigen Fasten-Sessions für einen spezifischen User zurück")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public List<FastSession> history() {
-        return service.history();
+    public ResponseEntity<List<FastSession>> history(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isPresent()) {
+                return ResponseEntity.ok(service.history(user.get()));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     // User-specific endpoints for cross-device login
