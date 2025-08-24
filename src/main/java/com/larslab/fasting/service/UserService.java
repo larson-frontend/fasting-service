@@ -158,11 +158,19 @@ public class UserService {
             preferences.setTheme(UserPreferences.Theme.fromValue(request.getTheme()));
         }
         
+        // Update timezone if provided
+        if (request.getTimezone() != null) {
+            preferences.setTimezone(request.getTimezone());
+        }
+        
         // Update notifications if provided
         if (request.getNotifications() != null) {
             UpdatePreferencesRequest.NotificationPreferencesRequest notifRequest = request.getNotifications();
             UserPreferences.NotificationPreferences notifications = preferences.getNotifications();
             
+            if (notifRequest.getEnabled() != null) {
+                notifications.setEnabled(notifRequest.getEnabled());
+            }
             if (notifRequest.getFastingReminders() != null) {
                 notifications.setFastingReminders(notifRequest.getFastingReminders());
             }
@@ -171,6 +179,28 @@ public class UserService {
             }
             if (notifRequest.getProgressUpdates() != null) {
                 notifications.setProgressUpdates(notifRequest.getProgressUpdates());
+            }
+            if (notifRequest.getGoalAchievements() != null) {
+                notifications.setGoalAchievements(notifRequest.getGoalAchievements());
+            }
+            if (notifRequest.getWeeklyReports() != null) {
+                notifications.setWeeklyReports(notifRequest.getWeeklyReports());
+            }
+        }
+        
+        // Update fasting defaults if provided
+        if (request.getFastingDefaults() != null) {
+            UpdatePreferencesRequest.FastingDefaultsRequest fastingRequest = request.getFastingDefaults();
+            UserPreferences.FastingDefaults fastingDefaults = preferences.getFastingDefaults();
+            
+            if (fastingRequest.getDefaultGoalHours() != null) {
+                fastingDefaults.setDefaultGoalHours(fastingRequest.getDefaultGoalHours());
+            }
+            if (fastingRequest.getPreferredFastingType() != null) {
+                fastingDefaults.setPreferredFastingType(fastingRequest.getPreferredFastingType());
+            }
+            if (fastingRequest.getAutoStartNextFast() != null) {
+                fastingDefaults.setAutoStartNextFast(fastingRequest.getAutoStartNextFast());
             }
         }
         

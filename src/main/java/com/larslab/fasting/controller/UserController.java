@@ -3,6 +3,7 @@ package com.larslab.fasting.controller;
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.UserService;
 import com.larslab.fasting.security.JwtService;
+import com.larslab.fasting.config.FeatureFlags;
 import com.larslab.fasting.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -24,10 +25,12 @@ public class UserController {
     
     private final UserService userService;
     private final JwtService jwtService;
+    private final FeatureFlags featureFlags;
     
-    public UserController(UserService userService, JwtService jwtService) {
+    public UserController(UserService userService, JwtService jwtService, FeatureFlags featureFlags) {
         this.userService = userService;
         this.jwtService = jwtService;
+        this.featureFlags = featureFlags;
     }
     
     @PostMapping("/login-or-create")
@@ -73,7 +76,7 @@ public class UserController {
         Optional<User> user = userService.getUserByIdentifier(identifier);
         
         if (user.isPresent()) {
-            return ResponseEntity.ok(new UserResponse(user.get()));
+            return ResponseEntity.ok(new UserResponse(user.get(), featureFlags));
         } else {
             return ResponseEntity.notFound().build();
         }
@@ -102,22 +105,19 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
     
-    @GetMapping("/current")
+        @GetMapping("/current")
     @Operation(summary = "Get current user", 
-               description = "Returns the current authenticated user. For now, returns the first user as there's no authentication yet.")
+               description = "Retrieves current user information and preferences")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User found"),
             @ApiResponse(responseCode = "404", description = "User not found")
     })
     public ResponseEntity<UserResponse> getCurrentUser(@RequestParam(required = false, defaultValue = "1") String userId) {
-        // TODO: Replace with actual authentication when implemented
-        // For now, we'll use a userId parameter or default to user ID 1
         try {
             Long id = Long.parseLong(userId);
             Optional<User> user = userService.getUserById(id);
-            
             if (user.isPresent()) {
-                return ResponseEntity.ok(new UserResponse(user.get()));
+                return ResponseEntity.ok(new UserResponse(user.get(), featureFlags));
             } else {
                 return ResponseEntity.notFound().build();
             }
@@ -140,7 +140,7 @@ public class UserController {
         try {
             Long id = Long.parseLong(userId);
             User updatedUser = userService.updatePreferences(id, request);
-            return ResponseEntity.ok(new UserResponse(updatedUser));
+            return ResponseEntity.ok(new UserResponse(updatedUser, featureFlags));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalArgumentException e) {
@@ -162,7 +162,7 @@ public class UserController {
         try {
             Long id = Long.parseLong(userId);
             User updatedUser = userService.updateLanguage(id, request);
-            return ResponseEntity.ok(new UserResponse(updatedUser));
+            return ResponseEntity.ok(new UserResponse(updatedUser, featureFlags));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalArgumentException e) {

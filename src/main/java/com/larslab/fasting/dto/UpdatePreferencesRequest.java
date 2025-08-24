@@ -17,6 +17,12 @@ public class UpdatePreferencesRequest {
     @Schema(description = "Notification preferences")
     private NotificationPreferencesRequest notifications;
     
+    @Schema(description = "Fasting default preferences")
+    private FastingDefaultsRequest fastingDefaults;
+    
+    @Schema(description = "User's timezone", example = "Europe/Berlin")
+    private String timezone;
+    
     public UpdatePreferencesRequest() {}
     
     // Getters and Setters
@@ -29,8 +35,17 @@ public class UpdatePreferencesRequest {
     public NotificationPreferencesRequest getNotifications() { return notifications; }
     public void setNotifications(NotificationPreferencesRequest notifications) { this.notifications = notifications; }
     
+    public FastingDefaultsRequest getFastingDefaults() { return fastingDefaults; }
+    public void setFastingDefaults(FastingDefaultsRequest fastingDefaults) { this.fastingDefaults = fastingDefaults; }
+    
+    public String getTimezone() { return timezone; }
+    public void setTimezone(String timezone) { this.timezone = timezone; }
+    
     @Schema(description = "Notification preferences update request")
     public static class NotificationPreferencesRequest {
+        
+        @Schema(description = "Master notification enable switch", example = "true")
+        private Boolean enabled;
         
         @Schema(description = "Enable fasting reminders", example = "true")
         private Boolean fastingReminders;
@@ -38,12 +53,21 @@ public class UpdatePreferencesRequest {
         @Schema(description = "Enable meal reminders", example = "true")
         private Boolean mealReminders;
         
-        @Schema(description = "Enable progress update notifications", example = "true")
+        @Schema(description = "Enable progress update notifications", example = "false")
         private Boolean progressUpdates;
+        
+        @Schema(description = "Enable goal achievement notifications", example = "true")
+        private Boolean goalAchievements;
+        
+        @Schema(description = "Enable weekly progress reports", example = "false")
+        private Boolean weeklyReports;
         
         public NotificationPreferencesRequest() {}
         
         // Getters and Setters
+        public Boolean getEnabled() { return enabled; }
+        public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+        
         public Boolean getFastingReminders() { return fastingReminders; }
         public void setFastingReminders(Boolean fastingReminders) { this.fastingReminders = fastingReminders; }
         
@@ -52,5 +76,36 @@ public class UpdatePreferencesRequest {
         
         public Boolean getProgressUpdates() { return progressUpdates; }
         public void setProgressUpdates(Boolean progressUpdates) { this.progressUpdates = progressUpdates; }
+        
+        public Boolean getGoalAchievements() { return goalAchievements; }
+        public void setGoalAchievements(Boolean goalAchievements) { this.goalAchievements = goalAchievements; }
+        
+        public Boolean getWeeklyReports() { return weeklyReports; }
+        public void setWeeklyReports(Boolean weeklyReports) { this.weeklyReports = weeklyReports; }
+    }
+    
+    @Schema(description = "Fasting defaults update request")
+    public static class FastingDefaultsRequest {
+        
+        @Schema(description = "Default goal hours for new fasting sessions", example = "16")
+        private Integer defaultGoalHours;
+        
+        @Schema(description = "Preferred fasting type", example = "16:8")
+        private String preferredFastingType;
+        
+        @Schema(description = "Automatically start next fasting session", example = "false")
+        private Boolean autoStartNextFast;
+        
+        public FastingDefaultsRequest() {}
+        
+        // Getters and Setters
+        public Integer getDefaultGoalHours() { return defaultGoalHours; }
+        public void setDefaultGoalHours(Integer defaultGoalHours) { this.defaultGoalHours = defaultGoalHours; }
+        
+        public String getPreferredFastingType() { return preferredFastingType; }
+        public void setPreferredFastingType(String preferredFastingType) { this.preferredFastingType = preferredFastingType; }
+        
+        public Boolean getAutoStartNextFast() { return autoStartNextFast; }
+        public void setAutoStartNextFast(Boolean autoStartNextFast) { this.autoStartNextFast = autoStartNextFast; }
     }
 }

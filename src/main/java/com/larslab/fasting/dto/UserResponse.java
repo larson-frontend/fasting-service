@@ -3,6 +3,7 @@ package com.larslab.fasting.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.model.UserPreferences;
+import com.larslab.fasting.config.FeatureFlags;
 import java.time.Instant;
 
 @Schema(description = "User information response")
@@ -35,6 +36,18 @@ public class UserResponse {
         this.createdAt = user.getCreatedAt();
         this.lastLoginAt = user.getLastLoginAt();
         this.preferences = new UserPreferencesResponse(user.getPreferences());
+    }
+    
+    /**
+     * Feature-aware constructor that respects feature flags
+     */
+    public UserResponse(User user, FeatureFlags featureFlags) {
+        this.id = user.getId().toString();
+        this.username = user.getUsername();
+        this.email = user.getEmail();
+        this.createdAt = user.getCreatedAt();
+        this.lastLoginAt = user.getLastLoginAt();
+        this.preferences = new UserPreferencesResponse(user.getPreferences(), featureFlags);
     }
     
     // Getters and Setters

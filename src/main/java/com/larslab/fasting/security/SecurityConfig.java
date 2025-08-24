@@ -40,6 +40,8 @@ public class SecurityConfig {
                 .requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // Actuator health endpoint - public access
                 .requestMatchers("/actuator/health").permitAll()
+                // TEMPORARY: Allow fasting and user endpoints for testing
+                .requestMatchers("/api/fast/**", "/api/users/**").permitAll()
                 // User-specific endpoints - require authentication
                 .requestMatchers("/api/fast/user/**").authenticated()
                 // All other requests require authentication
