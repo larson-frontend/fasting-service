@@ -98,18 +98,18 @@ class FastServiceTest {
     }
 
     @Test
-    void start_WhenActiveSessionExists_ReturnsExistingSession() {
+    void start_WhenActiveSessionExists_ThrowsException() {
         // Given
         StartFastRequest request = new StartFastRequest(12);
         
         when(repository.findFirstByEndAtIsNullOrderByStartAtDesc())
                 .thenReturn(Optional.of(activeFastSession));
 
-        // When
-        FastSession result = fastService.start(request);
-
-        // Then
-        assertThat(result).isEqualTo(activeFastSession);
+        // When & Then
+        assertThatThrownBy(() -> fastService.start(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Es läuft bereits eine Fasten-Session. Stoppen Sie diese zuerst mit /api/fast/stop");
+        
         verify(repository).findFirstByEndAtIsNullOrderByStartAtDesc();
         verify(repository, never()).save(any());
     }
