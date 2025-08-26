@@ -326,6 +326,57 @@ docker compose up --build
 
 ---
 
+## 🧪 Lokaler 1‑Befehl Start (Docker Build + ephemerer Postgres)
+
+Wenn du schnell lokal (Produktions-ähnlich: Profil `prod`, Port 10000, Docker Image) testen möchtest:
+
+Voraussetzungen: Docker + Maven installiert.
+
+Script ausführen (baut DB + Image + startet Service):
+```bash
+./scripts/run-local.sh
+```
+
+Was das Script macht:
+1. Startet (oder re-used) einen Postgres Container `fasting-db` (Port 5432, Passwort `postgres`).
+2. Wartet bis die DB erreichbar ist.
+3. Baut das JAR mit `mvn -DskipTests package`.
+4. Baut das Docker Image `fasting-service`.
+5. Startet den Container auf Port `10000` mit Profil `prod` & ENV Variablen (JWT_SECRET Dev-Wert, CORS `http://localhost:5173`).
+6. Pollt `/actuator/health` bis UP und streamt Logs.
+
+Aufrufen der Health‑URL:
+```bash
+curl http://localhost:10000/actuator/health
+```
+
+Anpassen:
+- Port ändern: Variable `APP_PORT` im Script.
+- CORS Ursprung ändern: `CORS_ALLOWED_ORIGINS` ENV im Script.
+- DB persistent machen: `docker run` Zeile im Script anpassen (Volume mount hinzufügen: `-v pgdata:/var/lib/postgresql/data`).
+
+Stoppen:
+- CTRL+C beendet App‑Container (DB läuft weiter).
+- Komplett aufräumen:
+```bash
+docker rm -f fasting-service fasting-db 2>/dev/null || true
+```
+
+Tipp (Frontend parallel, z.B. Vite): Stelle sicher, dass dein Frontend auf `VITE_API_BASE_URL=http://localhost:10000/api/fast` zeigt.
+
+Alternative ohne Script (manuell gleiche Schritte):
+```bash
+mvn -q -DskipTests package
+docker build -t fasting-service .
+docker run --rm -p 10000:10000 \
+  -e PORT=10000 -e SPRING_PROFILES_ACTIVE=prod \
+  -e DB_HOST=host.docker.internal -e DB_PORT=5432 -e DB_NAME=postgres \
+  -e DB_USER=postgres -e DB_PASSWORD=postgres -e JWT_SECRET=dev-local-secret \
+  fasting-service
+```
+
+---
+
 ## 📝 Entwickler-Notizen für Copilot
 
 ### Wichtige Endpunkte für Integration:
@@ -892,64 +943,6 @@ export const useFastingStore = defineStore('fasting', () => {
 });
 ```
 
-### Vue.js Feature Suggestions
-
-**Kernfunktionen:**
-1. **Start/Stop Button** - Große, zentrale Schaltfläche mit Vue Transitions
-2. **Live Timer** - Zeigt aktuelle Fastendauer mit reactive updates
-3. **Session History** - Liste vergangener Sessions mit Vue Transition Groups
-4. **Status Dashboard** - Übersicht über aktuelle Session
-
-**Vue-spezifische Features:**
-1. **Composition API** - Saubere Trennung von Business Logic
-2. **Pinia Store** - Zentrales State Management (optional)
-3. **Vue Router** - Navigation zwischen Timer und History
-4. **Teleport** - Modals und Notifications
-5. **Suspense** - Async Component Loading
-
-**Erweiterte Features:**
-1. **Progress Visualization** - SVG Kreisdiagramm mit Vue Transitions
-2. **Statistics** - Computed Properties für Durchschnittswerte
-3. **Notifications** - Browser-API mit Vue Composables
-4. **Goal Setting** - Reactive Formulare mit Validation
-5. **Export Function** - History als CSV/JSON mit File API
-
-**Vue.js Ecosystem Integration:**
-- **Vite** - Schneller Build mit HMR
-- **Vue DevTools** - Debugging Support
-- **Vitest** - Testing Framework
-- **Nuxt** - SSR/SSG (optional für SEO)
-
-**Responsive Design mit Vue:**
-- **CSS Modules** oder **Scoped Styles**
-- **Vue Use** - Utility Composables (useBreakpoints, useSwipe)
-- **Transition Components** - Smooth Animations
-- **Dynamic Components** - Mobile vs Desktop Views
-
-### Environment Variables für Vue.js
-
-```bash
-# .env für Vue.js Frontend
-VITE_API_BASE_URL=http://localhost:8080/api/fast
-VITE_HEALTH_CHECK_URL=http://localhost:8080/actuator/health
-VITE_REFRESH_INTERVAL=30000
-VITE_APP_TITLE=Fasting Tracker
-```
-
-```typescript
-// vite-env.d.ts
-interface ImportMetaEnv {
-  readonly VITE_API_BASE_URL: string;
-  readonly VITE_HEALTH_CHECK_URL: string;
-  readonly VITE_REFRESH_INTERVAL: string;
-  readonly VITE_APP_TITLE: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
-```
-
 ### Testing Scenarios für Vue.js
 
 ```typescript
@@ -1090,10 +1083,47 @@ Beim ersten Start legt die App **2 Sessions** an:
 
 ---
 
-## Nächste Schritte (optional)
-- **Flyway** für DB-Migrationen
-- **Auth** (z. B. Keycloak oder JWT)
-- **DTOs & Validation** (saubere API-Verträge)
-- **CI/CD** (GitHub Actions)
+## 🏭 Production Notes
+Kurzüberblick für echtes Deployment / Review:
+
+1. Secrets: `JWT_SECRET` ausschließlich über Environment (nie ins Repo commiten).
+2. Datenbank: `sslmode=require` ist aktiv (Verbindung verschlüsselt – Render kompatibel).
+3. Connection Pool: Klein halten (Free Tier) – aktuell Hikari max=5 / min=1.
+4. Schema-Sicherheit: Für echte Prod `spring.jpa.hibernate.ddl-auto=validate` + versionierte Migrationen (Flyway/Liquibase) nutzen.
+5. Cold Starts: Freie Hoster (Render Free) schlafen nach Inaktivität – ersten Request (Health Ping) einplanen.
+6. Beobachtbarkeit: Actuator Health aktiv; weitere Endpoints (metrics, prometheus) erst nach Bedarf frei schalten.
+7. Logging: Reduziert (Security WARN, SQL WARN) – Feinjustierung für Prod / zentrale Aggregation (ELK/Grafana Loki) möglich.
+8. Skalierung: Single Instance; horizontale Skalierung erst nach Einbau von verteiltem Cache / Sticky Sessions.
+
+## 🚀 Next Steps (Roadmap)
+- Flyway-Migrationen einführen (V1__create_core_tables.sql etc.) und `ddl-auto=validate` erzwingen.
+- Refresh Tokens + Rotation für langfristige Sessions (aktuelles JWT exp: 24h Standard).
+- Rate Limiting (z.B. Bucket4j oder API-Gateway) gegen brute force / Abuse.
+- Basic APM / Tracing (Micrometer + OpenTelemetry Export → Tempo/Jaeger).
+- Security-Hardening: CSP / stricte CORS Whitelist / HTTP Header (Spring Security Customizer).
+- Observability: Metrics Endpoint + Dashboard (Grafana) / Basic Alerts (Uptime).
+- Test Tiefe erhöhen: Integrationstests mit Testcontainers Postgres + MockMvc für Edge Cases.
+
+## ✅ Commit & PR Template (für diese Änderungen)
+Nutze folgende Prompt-Struktur für eine automatische Erstellung (z.B. mit Copilot) – liefert eine prägnante Commit-Message + PR Beschreibung.
+
+Prompt:
+```
+Erzeuge eine prägnante Commit-Message und eine PR-Beschreibung basierend auf den obigen Änderungen. Antworte nur mit zwei Abschnitten: "Commit message" (eine Zeile) und "PR description" (max. 8 Bullet Points).
+```
+Hinweis: Wenn der Assistent die Antwort kürzt → einfach `weiter` senden.
+
+Beispiel-Ausgabe (Schema):
+```
+Commit message: chore(docs): add production notes, roadmap and local run script docs
+
+PR description:
+- Added Production Notes section (secrets, pool sizing, sslmode, cold start)
+- Added focused Next Steps roadmap (Flyway, refresh tokens, rate limiting, APM)
+- Documented local 1-command Docker run script usage
+- Clarified migration strategy recommendation (ddl-auto -> validate)
+- Highlighted small connection pool rationale
+- Added commit & PR prompt template for future changes
+```
 
 ---

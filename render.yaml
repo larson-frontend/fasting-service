@@ -10,8 +10,6 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-
-      # Einzelwerte aus der Render-DB ziehen:
       - key: DB_HOST
         fromDatabase: { name: fasting-db, property: host }
       - key: DB_PORT
