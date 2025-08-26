@@ -2,13 +2,10 @@ name: Backend CI
 
 on:
   push:
-    paths:
-      - 'fasting-service/**'
     branches: [ develop, main, master, 'FEAT/**', 'fix/**' ]
   pull_request:
-    paths:
-      - 'fasting-service/**'
     branches: [ develop, main, master ]
+  workflow_dispatch: {}
 
 jobs:
   build-test:
@@ -30,12 +27,10 @@ jobs:
           cache: 'maven'
 
       - name: Maven Test
-        working-directory: fasting-service
         run: mvn -B -ntp test
 
       - name: Build Jar
         if: success()
-        working-directory: fasting-service
         run: mvn -B -ntp -DskipTests package
 
       - name: Upload Artifact (Jar)
@@ -43,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fasting-service-jar
-          path: fasting-service/target/*-SNAPSHOT.jar
+          path: target/*-SNAPSHOT.jar
           if-no-files-found: error
 
   docker-build:
@@ -88,9 +83,9 @@ jobs:
       - name: Build and Push Image
         uses: docker/build-push-action@v5
         with:
-          context: fasting-service
+          context: .
           push: true
-          file: fasting-service/Dockerfile
+          file: Dockerfile
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
