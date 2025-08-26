@@ -12,6 +12,8 @@
   <spring-boot.version>3.3.11</spring-boot.version>
   <!-- Override Tomcat to latest patched 10.1.x for CVE-2025-48988 / 48989 -->
   <tomcat.version>10.1.44</tomcat.version>
+  <!-- Override PostgreSQL JDBC to patched version fixing CVE-2025-49146 -->
+  <postgresql.version>42.7.7</postgresql.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -71,6 +73,7 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+  <version>${postgresql.version}</version>
       <scope>runtime</scope>
     </dependency>
     <dependency>
