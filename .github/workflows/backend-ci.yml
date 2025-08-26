@@ -85,30 +85,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: false
-          file: Dockerfile
-          platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BUILD_VERSION=${{ github.sha }}
-          outputs: type=docker
-
-      - name: Trivy Vulnerability Scan (Local Image)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: $(echo '${{ steps.meta.outputs.tags }}' | head -n1 | sed 's/,.*//')
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          timeout: 10m
-
-      - name: Push Image (after successful scan)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
           push: true
           file: Dockerfile
           platforms: linux/amd64
@@ -116,6 +92,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BUILD_VERSION=${{ github.sha }}
+
+      - name: Trivy Vulnerability Scan (Pushed Image Digest)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-image.outputs.digest }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          timeout: 10m
 
       - name: Summary
         run: |
