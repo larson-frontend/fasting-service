@@ -14,8 +14,11 @@ public class JwtService {
     @Value("${jwt.secret:fastingSecretKeyThatIsLongEnoughForHMAC256AndSecureForProduction}")
     private String secretKey;
     
-    @Value("${jwt.expiration:86400000}") // 24 hours in milliseconds
-    private Long jwtExpiration;
+    @Value("${jwt.expiration:900000}") // default 15m for access tokens
+    private Long accessExpiration;
+
+    @Value("${refresh.jwt.expiration:1209600000}") // 14 days
+    private Long refreshExpiration;
     
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -26,11 +29,20 @@ public class JwtService {
         return claimsResolver.apply(claims);
     }
     
-    public String generateToken(String username) {
+    public String generateAccessToken(String username) {
         return Jwts.builder()
             .subject(username)
             .issuedAt(new Date(System.currentTimeMillis()))
-            .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
+            .expiration(new Date(System.currentTimeMillis() + accessExpiration))
+            .signWith(getSignInKey())
+            .compact();
+    }
+
+    public String generateRefreshToken(String username) {
+        return Jwts.builder()
+            .subject(username)
+            .issuedAt(new Date(System.currentTimeMillis()))
+            .expiration(new Date(System.currentTimeMillis() + refreshExpiration))
             .signWith(getSignInKey())
             .compact();
     }

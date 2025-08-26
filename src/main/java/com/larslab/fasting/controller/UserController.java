@@ -3,6 +3,7 @@ package com.larslab.fasting.controller;
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.UserService;
 import com.larslab.fasting.security.JwtService;
+import com.larslab.fasting.service.RefreshTokenService;
 import com.larslab.fasting.config.FeatureFlags;
 import com.larslab.fasting.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,6 +16,9 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.util.*;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @RestController
 @RequestMapping("/api/users")
@@ -26,11 +30,13 @@ public class UserController {
     private final UserService userService;
     private final JwtService jwtService;
     private final FeatureFlags featureFlags;
+    private final RefreshTokenService refreshTokenService;
     
-    public UserController(UserService userService, JwtService jwtService, FeatureFlags featureFlags) {
+    public UserController(UserService userService, JwtService jwtService, FeatureFlags featureFlags, RefreshTokenService refreshTokenService) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.featureFlags = featureFlags;
+        this.refreshTokenService = refreshTokenService;
     }
     
     @PostMapping("/login-or-create")
@@ -46,16 +52,25 @@ public class UserController {
         try {
             User user = userService.loginOrCreateUser(request);
             
-            // Generate JWT token for the user
-            String jwtToken = jwtService.generateToken(user.getUsername());
-            
-            LoginOrCreateResponse response = new LoginOrCreateResponse(user, jwtToken);
+            String accessToken = jwtService.generateAccessToken(user.getUsername());
+            // Persist a separate opaque refresh token (random UUIDs) hashed server-side
+            String refreshRaw = refreshTokenService.createToken(
+                user,
+                Optional.ofNullable(requestUserAgent()).orElse(null),
+                Optional.ofNullable(requestIp()).orElse(null)
+            );
+            Map<String,Object> body = new HashMap<>();
+            body.put("user", new UserResponse(user, featureFlags));
+            body.put("accessToken", accessToken);
+            body.put("token", accessToken); // legacy alias for existing frontend
+            body.put("refreshToken", refreshRaw);
+            body.put("tokenType", "Bearer");
             
             // Return 201 for new users, 200 for existing users
             HttpStatus status = user.getCreatedAt().equals(user.getLastLoginAt()) ? 
                     HttpStatus.CREATED : HttpStatus.OK;
             
-            return ResponseEntity.status(status).body(response);
+            return ResponseEntity.status(status).body(body);
         } catch (IllegalArgumentException e) {
             // Return specific error message for better frontend handling
             Map<String, String> error = new HashMap<>();
@@ -178,5 +193,25 @@ public class UserController {
         error.put("message", e.getMessage());
         error.put("status", "400");
         return error;
+    }
+
+    private String requestUserAgent() {
+        HttpServletRequest req = currentRequest();
+        return req != null ? req.getHeader("User-Agent") : null;
+    }
+
+    private String requestIp() {
+        HttpServletRequest req = currentRequest();
+        if (req == null) return null;
+        String forwarded = req.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return req.getRemoteAddr();
+    }
+
+    private HttpServletRequest currentRequest() {
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        return attrs != null ? attrs.getRequest() : null;
     }
 }

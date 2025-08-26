@@ -22,10 +22,12 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
+    private final RateLimitingFilter rateLimitingFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, UserDetailsService userDetailsService) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, UserDetailsService userDetailsService, RateLimitingFilter rateLimitingFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.userDetailsService = userDetailsService;
+        this.rateLimitingFilter = rateLimitingFilter;
     }
 
     @Bean
@@ -35,20 +37,22 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(authz -> authz
                 // Public endpoints - no authentication required
-                .requestMatchers("/api/users/login-or-create", "/api/users/check-availability").permitAll()
+                .requestMatchers("/api/users/login-or-create", "/api/users/check-availability", "/api/users/refresh", "/api/users/logout").permitAll()
                 // API Documentation endpoints - public access
                 .requestMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // Actuator health endpoint - public access
                 .requestMatchers("/actuator/health").permitAll()
-                // TEMPORARY: Allow fasting and user endpoints for testing
-                .requestMatchers("/api/fast/**", "/api/users/**").permitAll()
-                // User-specific endpoints - require authentication
-                .requestMatchers("/api/fast/user/**").authenticated()
+                // Public fasting read-only status (optional) - currently require auth for all /api/fast
+                .requestMatchers("/api/fast/status", "/api/fast/history").authenticated()
+                .requestMatchers("/api/fast/**").authenticated()
+                .requestMatchers("/api/users/**").authenticated()
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            // Add JWT filter first so we can reliably insert rate limiting before it
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }
