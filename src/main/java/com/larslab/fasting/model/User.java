@@ -15,11 +15,11 @@ public class User {
     private Long id;
     
     @Column(unique = true, nullable = false)
-    @Schema(description = "Unique username", example = "john_doe")
+    @Schema(description = "Unique username or email identifier", example = "john_doe")
     private String username;
     
-    @Column(unique = true)
-    @Schema(description = "User email address", example = "john@example.com")
+    @Column(unique = true, nullable = false)
+    @Schema(description = "User email address (must be unique)", example = "john@example.com")
     private String email;
     
     @Schema(description = "User creation timestamp")

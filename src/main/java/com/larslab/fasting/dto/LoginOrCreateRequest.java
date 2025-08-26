@@ -7,12 +7,14 @@ import jakarta.validation.constraints.Email;
 @Schema(description = "Request for user login or creation")
 public class LoginOrCreateRequest {
     
-    @NotBlank(message = "Username is required")
-    @Schema(description = "Username for the user", example = "john_doe", required = true)
+    @NotBlank(message = "Username/identifier is required")
+    @Schema(description = "Username or email identifier (can be either username or email address)", 
+            example = "john_doe or john@example.com", required = true)
     private String username;
     
     @Email(message = "Email must be valid")
-    @Schema(description = "Email address (optional)", example = "john@example.com")
+    @Schema(description = "Email address (optional - only needed if username field is not an email)", 
+            example = "john@example.com", required = false)
     private String email;
     
     public LoginOrCreateRequest() {}

@@ -21,33 +21,74 @@ public class UserService {
     }
     
     /**
-     * Login or create user - idempotent operation
+     * Login or create user - handles single field that can be username or email
      */
     public User loginOrCreateUser(LoginOrCreateRequest request) {
-        // First try to find by username
-        Optional<User> existingUser = userRepository.findByUsername(request.getUsername());
+        // Validate that identifier is provided
+        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+            throw new IllegalArgumentException("Username/email identifier is required");
+        }
+        
+        String identifier = request.getUsername().trim();
+        boolean isEmail = isValidEmail(identifier);
+        
+        String actualUsername;
+        String actualEmail;
+        
+        if (isEmail) {
+            // Identifier is an email
+            actualEmail = identifier.toLowerCase();
+            actualUsername = extractUsernameFromEmail(actualEmail);
+        } else {
+            // Identifier is a username
+            actualUsername = identifier;
+            
+            // Use provided email or auto-generate
+            if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+                actualEmail = request.getEmail().trim().toLowerCase();
+            } else {
+                actualEmail = actualUsername + "@fasting.app";
+            }
+        }
+        
+        // Try to find existing user by username OR email
+        Optional<User> existingUser = getUserByIdentifier(identifier);
         
         if (existingUser.isPresent()) {
+            // User exists - login
             User user = existingUser.get();
-            // Update email if provided and different
-            if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
-                user.setEmail(request.getEmail());
-            }
             user.updateLastLogin();
             return userRepository.save(user);
         }
         
-        // If not found by username, check if email already exists
-        if (request.getEmail() != null) {
-            Optional<User> userByEmail = userRepository.findByEmail(request.getEmail());
-            if (userByEmail.isPresent()) {
-                throw new IllegalArgumentException("Email already exists with different username");
-            }
+        // Check if generated/provided username already exists
+        if (!isEmail && userRepository.existsByUsername(actualUsername)) {
+            throw new IllegalArgumentException("Username '" + actualUsername + "' is already taken");
+        }
+        
+        // Check if generated/provided email already exists
+        if (userRepository.existsByEmail(actualEmail)) {
+            throw new IllegalArgumentException("Email '" + actualEmail + "' is already registered");
         }
         
         // Create new user
-        User newUser = new User(request.getUsername(), request.getEmail());
+        User newUser = new User(actualUsername, actualEmail);
         return userRepository.save(newUser);
+    }
+    
+    /**
+     * Check if string is a valid email format
+     */
+    private boolean isValidEmail(String email) {
+        return email != null && email.contains("@") && email.contains(".") && 
+               email.indexOf("@") < email.lastIndexOf(".");
+    }
+    
+    /**
+     * Extract username from email (part before @)
+     */
+    private String extractUsernameFromEmail(String email) {
+        return email.substring(0, email.indexOf("@"));
     }
     
     /**
@@ -62,6 +103,40 @@ public class UserService {
      */
     public Optional<User> getUserByUsername(String username) {
         return userRepository.findByUsername(username);
+    }
+    
+    /**
+     * Get user by email
+     */
+    public Optional<User> getUserByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+    
+    /**
+     * Get user by identifier (username or email)
+     */
+    public Optional<User> getUserByIdentifier(String identifier) {
+        if (identifier == null || identifier.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        
+        String cleanIdentifier = identifier.trim();
+        
+        // Try to find by username first
+        Optional<User> userByUsername = userRepository.findByUsername(cleanIdentifier);
+        if (userByUsername.isPresent()) {
+            return userByUsername;
+        }
+        
+        // If not found by username, try by email
+        return userRepository.findByEmail(cleanIdentifier.toLowerCase());
+    }
+    
+    /**
+     * Check if username or email already exists
+     */
+    public boolean isUsernameOrEmailTaken(String username, String email) {
+        return userRepository.existsByUsername(username) || userRepository.existsByEmail(email);
     }
     
     /**
@@ -83,11 +158,19 @@ public class UserService {
             preferences.setTheme(UserPreferences.Theme.fromValue(request.getTheme()));
         }
         
+        // Update timezone if provided
+        if (request.getTimezone() != null) {
+            preferences.setTimezone(request.getTimezone());
+        }
+        
         // Update notifications if provided
         if (request.getNotifications() != null) {
             UpdatePreferencesRequest.NotificationPreferencesRequest notifRequest = request.getNotifications();
             UserPreferences.NotificationPreferences notifications = preferences.getNotifications();
             
+            if (notifRequest.getEnabled() != null) {
+                notifications.setEnabled(notifRequest.getEnabled());
+            }
             if (notifRequest.getFastingReminders() != null) {
                 notifications.setFastingReminders(notifRequest.getFastingReminders());
             }
@@ -96,6 +179,28 @@ public class UserService {
             }
             if (notifRequest.getProgressUpdates() != null) {
                 notifications.setProgressUpdates(notifRequest.getProgressUpdates());
+            }
+            if (notifRequest.getGoalAchievements() != null) {
+                notifications.setGoalAchievements(notifRequest.getGoalAchievements());
+            }
+            if (notifRequest.getWeeklyReports() != null) {
+                notifications.setWeeklyReports(notifRequest.getWeeklyReports());
+            }
+        }
+        
+        // Update fasting defaults if provided
+        if (request.getFastingDefaults() != null) {
+            UpdatePreferencesRequest.FastingDefaultsRequest fastingRequest = request.getFastingDefaults();
+            UserPreferences.FastingDefaults fastingDefaults = preferences.getFastingDefaults();
+            
+            if (fastingRequest.getDefaultGoalHours() != null) {
+                fastingDefaults.setDefaultGoalHours(fastingRequest.getDefaultGoalHours());
+            }
+            if (fastingRequest.getPreferredFastingType() != null) {
+                fastingDefaults.setPreferredFastingType(fastingRequest.getPreferredFastingType());
+            }
+            if (fastingRequest.getAutoStartNextFast() != null) {
+                fastingDefaults.setAutoStartNextFast(fastingRequest.getAutoStartNextFast());
             }
         }
         
