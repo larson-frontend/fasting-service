@@ -4,6 +4,7 @@ import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.function.Function;
@@ -11,7 +12,8 @@ import java.util.function.Function;
 @Service
 public class JwtService {
     
-    @Value("${jwt.secret:fastingSecretKeyThatIsLongEnoughForHMAC256AndSecureForProduction}")
+    // Intentionally no secure default; must be overridden via environment.
+    @Value("${jwt.secret:change-me-in-prod}")
     private String secretKey;
     
     @Value("${jwt.expiration:900000}") // default 15m for access tokens
@@ -80,5 +82,12 @@ public class JwtService {
     private SecretKey getSignInKey() {
         byte[] keyBytes = secretKey.getBytes();
         return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    @PostConstruct
+    void validateSecret() {
+        if (secretKey == null || secretKey.equals("change-me-in-prod") || secretKey.length() < 32) {
+            throw new IllegalStateException("JWT secret must be provided via JWT_SECRET env var and be at least 32 characters");
+        }
     }
 }
