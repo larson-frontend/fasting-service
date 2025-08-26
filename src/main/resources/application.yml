@@ -1,3 +1,16 @@
 spring:
   profiles:
     active: dev
+
+# Feature flags configuration
+# These control which features are available in the API
+features:
+  # Basic notification toggle (always available for core functionality)
+  # Detailed notification types (reminders, meals, etc.) - disabled for initial release
+  detailed-notifications: false
+  
+  # Theme selection - disabled for initial release
+  theme-selection: false
+  
+  # Advanced fasting features - disabled for initial release
+  advanced-fasting: false
