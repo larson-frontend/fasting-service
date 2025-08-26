@@ -57,7 +57,8 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         String ip = request.getHeader("X-Forwarded-For");
         if (ip != null && !ip.isBlank()) ip = ip.split(",")[0].trim();
         if (ip == null || ip.isBlank()) ip = request.getRemoteAddr();
-        // Different bucket for auth vs others maybe later
-        return ip;
+        // Include coarse endpoint path to avoid one noisy route starving others
+        String path = request.getRequestURI();
+        return ip + '|' + path;
     }
 }
