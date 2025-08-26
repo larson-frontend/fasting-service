@@ -92,6 +92,17 @@ jobs:
           build-args: |
             BUILD_VERSION=${{ github.sha }}
 
+      - name: Trivy Vulnerability Scan (Image)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+            image-ref: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+            format: 'table'
+            severity: 'CRITICAL,HIGH'
+            exit-code: '1'
+            ignore-unfixed: true
+            vuln-type: 'os,library'
+            timeout: 10m
+
       - name: Summary
         run: |
           echo "Image pushed: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
