@@ -8,7 +8,10 @@
   <version>0.0.1-SNAPSHOT</version>
   <properties>
     <java.version>21</java.version>
-    <spring-boot.version>3.3.2</spring-boot.version>
+  <!-- Upgraded to include fixes for CVE-2024-38816 / 38819 / 38821, CVE-2025-22228, CVE-2025-22235, Tomcat CVE-2025-24813, etc. -->
+  <spring-boot.version>3.3.11</spring-boot.version>
+  <!-- Override Tomcat to latest patched 10.1.x for CVE-2025-48988 / 48989 -->
+  <tomcat.version>10.1.44</tomcat.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -25,6 +28,12 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <!-- Explicit Tomcat version override -->
+    <dependency>
+      <groupId>org.apache.tomcat.embed</groupId>
+      <artifactId>tomcat-embed-core</artifactId>
+      <version>${tomcat.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
