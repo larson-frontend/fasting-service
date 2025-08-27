@@ -10,16 +10,20 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-      - key: DB_HOST
-        fromDatabase: { name: fasting-db, property: host }
-      - key: DB_PORT
-        fromDatabase: { name: fasting-db, property: port }
-      - key: DB_NAME
-        fromDatabase: { name: fasting-db, property: databaseName }
-      - key: DB_USER
+
+      # Connection-URL + Credentials aus der DB ziehen (gültige Properties!)
+      - key: DATABASE_URL
+        fromDatabase: { name: fasting-db, property: connectionString }
+      - key: SPRING_DATASOURCE_USERNAME
         fromDatabase: { name: fasting-db, property: user }
-      - key: DB_PASSWORD
+      - key: SPRING_DATASOURCE_PASSWORD
         fromDatabase: { name: fasting-db, property: password }
+      - key: DB_NAME
+        fromDatabase: { name: fasting-db, property: database }
+
+      # Aus der DB-URL eine JDBC-URL bauen (Render-Interpolation mit $$)
+      - key: JDBC_DATABASE_URL
+        value: jdbc:$${DATABASE_URL}?sslmode=require
 
 databases:
   - name: fasting-db
