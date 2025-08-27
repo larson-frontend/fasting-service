@@ -21,7 +21,7 @@ services:
       - key: DB_PASSWORD
         fromDatabase: { name: fasting-db, property: password }
       - key: JWT_SECRET
-        sync: false # Set this via Render Dashboard: 32+ chars (recommend 64+ random base64)
+        value: ifvQ24IWvnUOrXCY80uu5jEy1kijIHr2EP0rToUI5Wg89r1j7m-3xe72p8a00UNr
 
 databases:
   - name: fasting-db
