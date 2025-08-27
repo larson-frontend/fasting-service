@@ -5,6 +5,8 @@ import com.larslab.fasting.dto.UpdatePreferencesRequest;
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.model.UserPreferences;
 import com.larslab.fasting.service.UserService;
+import com.larslab.fasting.config.FeatureFlags;
+import com.larslab.fasting.service.RefreshTokenService;
 import com.larslab.fasting.security.JwtService;
 import com.larslab.fasting.config.TestSecurityConfig;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +36,13 @@ class UserPreferencesControllerTest {
 
     @MockBean
     private JwtService jwtService;
+
+    // Provide FeatureFlags dependency required by UserController (slice tests don't scan generic @Component)
+    @MockBean
+    private FeatureFlags featureFlags;
+
+    @MockBean
+    private RefreshTokenService refreshTokenService;
 
     @Autowired
     private ObjectMapper objectMapper;

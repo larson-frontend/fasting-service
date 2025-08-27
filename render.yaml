@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: fasting-service
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    autoDeploy: true
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_HOST
+        fromDatabase: { name: fasting-db, property: host }
+      - key: DB_PORT
+        fromDatabase: { name: fasting-db, property: port }
+      - key: DB_NAME
+        fromDatabase: { name: fasting-db, property: databaseName }
+      - key: DB_USER
+        fromDatabase: { name: fasting-db, property: user }
+      - key: DB_PASSWORD
+        fromDatabase: { name: fasting-db, property: password }
+
+databases:
+  - name: fasting-db
+    plan: free
+    region: frankfurt
+    databaseName: fasting_app
+    user: fasting_user

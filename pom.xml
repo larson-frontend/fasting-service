@@ -8,7 +8,12 @@
   <version>0.0.1-SNAPSHOT</version>
   <properties>
     <java.version>21</java.version>
-    <spring-boot.version>3.3.2</spring-boot.version>
+  <!-- Upgraded to include fixes for CVE-2024-38816 / 38819 / 38821, CVE-2025-22228, CVE-2025-22235, Tomcat CVE-2025-24813, etc. -->
+  <spring-boot.version>3.3.11</spring-boot.version>
+  <!-- Override Tomcat to latest patched 10.1.x for CVE-2025-48988 / 48989 -->
+  <tomcat.version>10.1.44</tomcat.version>
+  <!-- Override PostgreSQL JDBC to patched version fixing CVE-2025-49146 -->
+  <postgresql.version>42.7.7</postgresql.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -25,6 +30,12 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <!-- Explicit Tomcat version override -->
+    <dependency>
+      <groupId>org.apache.tomcat.embed</groupId>
+      <artifactId>tomcat-embed-core</artifactId>
+      <version>${tomcat.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -62,6 +73,7 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+  <version>${postgresql.version}</version>
       <scope>runtime</scope>
     </dependency>
     <dependency>
@@ -69,9 +81,33 @@
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>2.2.0</version>
     </dependency>
+    <!-- Structured JSON logging -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>7.4</version>
+    </dependency>
+    <!-- Flyway for DB migrations -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
