@@ -4,6 +4,7 @@ import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.function.Function;
@@ -11,11 +12,15 @@ import java.util.function.Function;
 @Service
 public class JwtService {
     
-    @Value("${jwt.secret:fastingSecretKeyThatIsLongEnoughForHMAC256AndSecureForProduction}")
+    // Intentionally no secure default; must be overridden via environment.
+    @Value("${jwt.secret:change-me-in-prod}")
     private String secretKey;
     
-    @Value("${jwt.expiration:86400000}") // 24 hours in milliseconds
-    private Long jwtExpiration;
+    @Value("${jwt.expiration:900000}") // default 15m for access tokens
+    private Long accessExpiration;
+
+    @Value("${refresh.jwt.expiration:1209600000}") // 14 days
+    private Long refreshExpiration;
     
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -26,11 +31,20 @@ public class JwtService {
         return claimsResolver.apply(claims);
     }
     
-    public String generateToken(String username) {
+    public String generateAccessToken(String username) {
         return Jwts.builder()
             .subject(username)
             .issuedAt(new Date(System.currentTimeMillis()))
-            .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
+            .expiration(new Date(System.currentTimeMillis() + accessExpiration))
+            .signWith(getSignInKey())
+            .compact();
+    }
+
+    public String generateRefreshToken(String username) {
+        return Jwts.builder()
+            .subject(username)
+            .issuedAt(new Date(System.currentTimeMillis()))
+            .expiration(new Date(System.currentTimeMillis() + refreshExpiration))
             .signWith(getSignInKey())
             .compact();
     }
@@ -68,5 +82,12 @@ public class JwtService {
     private SecretKey getSignInKey() {
         byte[] keyBytes = secretKey.getBytes();
         return Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    @PostConstruct
+    void validateSecret() {
+        if (secretKey == null || secretKey.equals("change-me-in-prod") || secretKey.length() < 32) {
+            throw new IllegalStateException("JWT secret must be provided via JWT_SECRET env var and be at least 32 characters");
+        }
     }
 }

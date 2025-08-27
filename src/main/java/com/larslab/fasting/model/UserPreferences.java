@@ -7,12 +7,10 @@ import jakarta.persistence.*;
 @Schema(description = "User preferences and settings")
 public class UserPreferences {
     
-    @Enumerated(EnumType.STRING)
     @Column(name = "language")
     @Schema(description = "User interface language", example = "en", allowableValues = {"en", "de"})
     private Language language = Language.EN;
     
-    @Enumerated(EnumType.STRING)
     @Column(name = "theme")
     @Schema(description = "UI theme preference", example = "light", allowableValues = {"light", "dark", "system"})
     private Theme theme = Theme.SYSTEM;

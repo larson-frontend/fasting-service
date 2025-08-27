@@ -5,28 +5,35 @@ import com.larslab.fasting.dto.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+// @WithMockUser is not effective for TestRestTemplate real HTTP calls; we pass real Bearer tokens instead
+import org.springframework.http.HttpHeaders;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace.NONE;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import com.larslab.fasting.support.AbstractIntegrationTest;
 import org.springframework.web.client.RestTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = {
-    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000",
-    "spring.jpa.hibernate.ddl-auto=create-drop",
-    "spring.jpa.properties.hibernate.hbm2ddl.auto=create-drop",
-    "spring.h2.console.enabled=true"
-})
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
-public class UserControllerIntegrationTest {
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = NONE)
+public class UserControllerIntegrationTest extends AbstractIntegrationTest {
+
+    @DynamicPropertySource
+    static void featureFlags(DynamicPropertyRegistry registry) {
+        registry.add("features.theme-selection", () -> "true");
+        registry.add("features.detailed-notifications", () -> "true");
+    }
 
     @LocalServerPort
     private int port;
@@ -89,15 +96,19 @@ public class UserControllerIntegrationTest {
         
         assertThat(createResponse.getBody()).isNotNull();
         String userId = createResponse.getBody().getUser().getId();
+        String token = createResponse.getBody().getToken();
+        assertThat(token).as("access token should be present in login response").isNotBlank();
         
         UpdateLanguageRequest request = new UpdateLanguageRequest("de");
         
         // Use the PATCH-enabled RestTemplate
         String url = "http://localhost:" + port + "/api/users/language?userId=" + userId;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
         ResponseEntity<UserResponse> response = patchEnabledRestTemplate.exchange(
             url,
             HttpMethod.PATCH,
-            new HttpEntity<>(request),
+            new HttpEntity<>(request, headers),
             UserResponse.class);
         
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -114,6 +125,8 @@ public class UserControllerIntegrationTest {
         
         assertThat(createResponse.getBody()).isNotNull();
         String userId = createResponse.getBody().getUser().getId();
+        String token = createResponse.getBody().getToken();
+        assertThat(token).as("access token should be present in login response").isNotBlank();
         
         UpdatePreferencesRequest request = new UpdatePreferencesRequest();
         request.setLanguage("de");
@@ -128,10 +141,12 @@ public class UserControllerIntegrationTest {
         
         // Use the PATCH-enabled RestTemplate
         String url = "http://localhost:" + port + "/api/users/preferences?userId=" + userId;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
         ResponseEntity<UserResponse> response = patchEnabledRestTemplate.exchange(
             url,
             HttpMethod.PATCH,
-            new HttpEntity<>(request),
+            new HttpEntity<>(request, headers),
             UserResponse.class);
         
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -152,9 +167,17 @@ public class UserControllerIntegrationTest {
         
         assertThat(createResponse.getBody()).isNotNull();
         String userId = createResponse.getBody().getUser().getId();
+        String token = createResponse.getBody().getToken();
+        assertThat(token).as("access token should be present in login response").isNotBlank();
         
-        ResponseEntity<UserResponse> response = restTemplate.getForEntity(
-            "/api/users/current?userId=" + userId, UserResponse.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        ResponseEntity<UserResponse> response = restTemplate.exchange(
+            "/api/users/current?userId=" + userId,
+            HttpMethod.GET,
+            entity,
+            UserResponse.class);
         
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isNotNull();
