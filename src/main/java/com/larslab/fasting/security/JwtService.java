@@ -2,6 +2,8 @@ package com.larslab.fasting.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
@@ -11,6 +13,8 @@ import java.util.function.Function;
 
 @Service
 public class JwtService {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtService.class);
     
     // Intentionally no secure default; must be overridden via environment.
     @Value("${jwt.secret:change-me-in-prod}")
@@ -86,8 +90,19 @@ public class JwtService {
 
     @PostConstruct
     void validateSecret() {
-        if (secretKey == null || secretKey.equals("change-me-in-prod") || secretKey.length() < 32) {
+        int length = secretKey == null ? -1 : secretKey.length();
+        if (secretKey == null) {
+            log.error("JWT secret missing (null)");
             throw new IllegalStateException("JWT secret must be provided via JWT_SECRET env var and be at least 32 characters");
         }
+        if (secretKey.equals("change-me-in-prod")) {
+            log.error("JWT secret is still default placeholder (length={})", length);
+            throw new IllegalStateException("JWT secret must be provided via JWT_SECRET env var and be at least 32 characters");
+        }
+        if (length < 32) {
+            log.error("JWT secret too short (length={})", length);
+            throw new IllegalStateException("JWT secret must be provided via JWT_SECRET env var and be at least 32 characters");
+        }
+        log.info("JWT secret accepted (length={})", length);
     }
 }
