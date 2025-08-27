@@ -10,16 +10,6 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-      - key: DB_HOST
-        fromDatabase: { name: fasting-db, property: host }
-      - key: DB_PORT
-        fromDatabase: { name: fasting-db, property: port }
-      - key: DB_NAME
-        fromDatabase: { name: fasting-db, property: database }
-      - key: DB_USER
-        fromDatabase: { name: fasting-db, property: user }
-      - key: DB_PASSWORD
-        fromDatabase: { name: fasting-db, property: password }
       - key: JWT_SECRET
         value: ifvQ24IWvnUOrXCY80uu5jEy1kijIHr2EP0rToUI5Wg89r1j7m-3xe72p8a00UNr
 
