@@ -1,0 +1,82 @@
+name: Backend Release
+
+on:
+  push:
+    tags:
+      - 'backend-v*.*.*'
+
+jobs:
+  release-docker:
+    name: Release Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE_NAME: fasting-service
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract tag version
+        id: vars
+        run: |
+          echo "tag_version=${GITHUB_REF_NAME#backend-v}" >> $GITHUB_OUTPUT
+
+      - name: Extract Metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.vars.outputs.tag_version }}
+            type=raw,value=latest
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: fasting-service
+          push: true
+          file: fasting-service/Dockerfile
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_VERSION=${{ steps.vars.outputs.tag_version }}
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action/download-syft@v0.17.9
+      - name: Run Syft
+        run: syft packages dir:fasting-service -o json > sbom-${{ steps.vars.outputs.tag_version }}.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.vars.outputs.tag_version }}
+          path: sbom-${{ steps.vars.outputs.tag_version }}.json
+
+      - name: Release Notes Draft
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: Backend Release ${{ steps.vars.outputs.tag_version }}
+          files: |
+            sbom-${{ steps.vars.outputs.tag_version }}.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

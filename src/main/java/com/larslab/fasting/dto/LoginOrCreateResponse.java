@@ -9,7 +9,9 @@ public class LoginOrCreateResponse {
     @Schema(description = "User information")
     private UserResponse user;
     
-    @Schema(description = "Authentication token (optional for future use)")
+    @Schema(description = "JWT Authentication token (required for secured endpoints)", 
+            example = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0ZXN0dXNlciIsImlhdCI6MTYzOTU4NDAwMCwiZXhwIjoxNjM5NjcwNDAwfQ.signature",
+            required = true)
     private String token;
     
     public LoginOrCreateResponse() {}

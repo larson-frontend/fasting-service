@@ -2,6 +2,9 @@ package com.larslab.fasting.controller;
 
 import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.UserService;
+import com.larslab.fasting.security.JwtService;
+import com.larslab.fasting.service.RefreshTokenService;
+import com.larslab.fasting.config.FeatureFlags;
 import com.larslab.fasting.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -13,6 +16,9 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.util.*;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @RestController
 @RequestMapping("/api/users")
@@ -22,51 +28,111 @@ import java.util.*;
 public class UserController {
     
     private final UserService userService;
+    private final JwtService jwtService;
+    private final FeatureFlags featureFlags;
+    private final RefreshTokenService refreshTokenService;
     
-    public UserController(UserService userService) {
+    public UserController(UserService userService, JwtService jwtService, FeatureFlags featureFlags, RefreshTokenService refreshTokenService) {
         this.userService = userService;
+        this.jwtService = jwtService;
+        this.featureFlags = featureFlags;
+        this.refreshTokenService = refreshTokenService;
     }
     
     @PostMapping("/login-or-create")
     @Operation(summary = "Login or create user", 
-               description = "Creates a new user if they don't exist, or logs in existing user. Idempotent operation.")
+               description = "Creates a new user if they don't exist, or logs in existing user. The 'username' field can contain either a username or email address. Returns a JWT token for authentication.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User logged in successfully"),
             @ApiResponse(responseCode = "201", description = "New user created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid request data"),
-            @ApiResponse(responseCode = "409", description = "Email already exists with different username")
+            @ApiResponse(responseCode = "409", description = "Username or email already exists")
     })
-    public ResponseEntity<LoginOrCreateResponse> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
+    public ResponseEntity<?> loginOrCreate(@Valid @RequestBody LoginOrCreateRequest request) {
         try {
             User user = userService.loginOrCreateUser(request);
-            LoginOrCreateResponse response = new LoginOrCreateResponse(user);
+            
+            String accessToken = jwtService.generateAccessToken(user.getUsername());
+            // Persist a separate opaque refresh token (random UUIDs) hashed server-side
+            String refreshRaw = refreshTokenService.createToken(
+                user,
+                Optional.ofNullable(requestUserAgent()).orElse(null),
+                Optional.ofNullable(requestIp()).orElse(null)
+            );
+            Map<String,Object> body = new HashMap<>();
+            body.put("user", new UserResponse(user, featureFlags));
+            body.put("accessToken", accessToken);
+            body.put("token", accessToken); // legacy alias for existing frontend
+            body.put("refreshToken", refreshRaw);
+            body.put("tokenType", "Bearer");
             
             // Return 201 for new users, 200 for existing users
             HttpStatus status = user.getCreatedAt().equals(user.getLastLoginAt()) ? 
                     HttpStatus.CREATED : HttpStatus.OK;
             
-            return ResponseEntity.status(status).body(response);
+            return ResponseEntity.status(status).body(body);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            // Return specific error message for better frontend handling
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            error.put("timestamp", java.time.Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
         }
     }
     
-    @GetMapping("/current")
+    @GetMapping("/find/{identifier}")
+    @Operation(summary = "Find user by identifier", 
+               description = "Find user by username or email address")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "User found"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    public ResponseEntity<UserResponse> findUserByIdentifier(@PathVariable String identifier) {
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        
+        if (user.isPresent()) {
+            return ResponseEntity.ok(new UserResponse(user.get(), featureFlags));
+        } else {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    @GetMapping("/check-availability")
+    @Operation(summary = "Check username/email availability", 
+               description = "Check if username or email is already taken")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Availability checked")
+    })
+    public ResponseEntity<Map<String, Object>> checkAvailability(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String email) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        if (username != null && !username.trim().isEmpty()) {
+            response.put("usernameAvailable", !userService.getUserByUsername(username.trim()).isPresent());
+        }
+        
+        if (email != null && !email.trim().isEmpty()) {
+            response.put("emailAvailable", !userService.getUserByEmail(email.trim().toLowerCase()).isPresent());
+        }
+        
+        return ResponseEntity.ok(response);
+    }
+    
+        @GetMapping("/current")
     @Operation(summary = "Get current user", 
-               description = "Returns the current authenticated user. For now, returns the first user as there's no authentication yet.")
+               description = "Retrieves current user information and preferences")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "User found"),
             @ApiResponse(responseCode = "404", description = "User not found")
     })
     public ResponseEntity<UserResponse> getCurrentUser(@RequestParam(required = false, defaultValue = "1") String userId) {
-        // TODO: Replace with actual authentication when implemented
-        // For now, we'll use a userId parameter or default to user ID 1
         try {
             Long id = Long.parseLong(userId);
             Optional<User> user = userService.getUserById(id);
-            
             if (user.isPresent()) {
-                return ResponseEntity.ok(new UserResponse(user.get()));
+                return ResponseEntity.ok(new UserResponse(user.get(), featureFlags));
             } else {
                 return ResponseEntity.notFound().build();
             }
@@ -89,7 +155,7 @@ public class UserController {
         try {
             Long id = Long.parseLong(userId);
             User updatedUser = userService.updatePreferences(id, request);
-            return ResponseEntity.ok(new UserResponse(updatedUser));
+            return ResponseEntity.ok(new UserResponse(updatedUser, featureFlags));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalArgumentException e) {
@@ -111,7 +177,7 @@ public class UserController {
         try {
             Long id = Long.parseLong(userId);
             User updatedUser = userService.updateLanguage(id, request);
-            return ResponseEntity.ok(new UserResponse(updatedUser));
+            return ResponseEntity.ok(new UserResponse(updatedUser, featureFlags));
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalArgumentException e) {
@@ -127,5 +193,25 @@ public class UserController {
         error.put("message", e.getMessage());
         error.put("status", "400");
         return error;
+    }
+
+    private String requestUserAgent() {
+        HttpServletRequest req = currentRequest();
+        return req != null ? req.getHeader("User-Agent") : null;
+    }
+
+    private String requestIp() {
+        HttpServletRequest req = currentRequest();
+        if (req == null) return null;
+        String forwarded = req.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return req.getRemoteAddr();
+    }
+
+    private HttpServletRequest currentRequest() {
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        return attrs != null ? attrs.getRequest() : null;
     }
 }

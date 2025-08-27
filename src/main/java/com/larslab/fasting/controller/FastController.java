@@ -1,19 +1,26 @@
 package com.larslab.fasting.controller;
 
 import com.larslab.fasting.model.FastSession;
+import com.larslab.fasting.model.User;
 import com.larslab.fasting.service.FastService;
+import com.larslab.fasting.service.UserService;
+import com.larslab.fasting.security.UserAuthorizationService;
 import com.larslab.fasting.dto.StartFastRequest;
 import com.larslab.fasting.dto.FastStatusResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import jakarta.validation.Valid;
 import java.util.*;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/fast")
@@ -22,52 +29,256 @@ import java.util.*;
 @Validated
 public class FastController {
     private final FastService service;
+    private final UserService userService;
+    private final UserAuthorizationService authorizationService;
 
-    public FastController(FastService service) {
+    public FastController(FastService service, UserService userService, UserAuthorizationService authorizationService) {
         this.service = service;
+        this.userService = userService;
+        this.authorizationService = authorizationService;
     }
 
     @PostMapping("/start")
     @Operation(summary = "Neue Fasten-Session starten", 
-               description = "Startet eine neue Fasten-Session mit optionalem Ziel oder gibt die bereits aktive Session zurück")
+               description = "Startet eine neue Fasten-Session für einen spezifischen User mit optionalem Ziel oder gibt die bereits aktive Session zurück")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet oder bereits aktiv"),
-            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten (goalHours muss zwischen 1 und 48 liegen)")
+            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten (goalHours muss zwischen 1 und 48 liegen)"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastSession start(@Valid @RequestBody(required = false) StartFastRequest request) {
-        if (request == null) {
-            request = new StartFastRequest(16); // Default 16 Stunden
+    public ResponseEntity<FastSession> start(@RequestParam(required = false, defaultValue = "1") String userId,
+                                             @Valid @RequestBody(required = false) StartFastRequest request) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            if (request == null) {
+                request = new StartFastRequest(16); // Default 16 Stunden
+            }
+            
+            try {
+                FastSession session = service.start(user.get(), request);
+                return ResponseEntity.ok(session);
+            } catch (IllegalStateException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
         }
-        return service.start(request);
     }
 
     @PostMapping("/stop")
-    @Operation(summary = "Aktive Fasten-Session beenden", description = "Beendet die aktuell aktive Fasten-Session")
+    @Operation(summary = "Aktive Fasten-Session beenden", description = "Beendet die aktuell aktive Fasten-Session für einen spezifischen User")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
-            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden")
+            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastSession stop() {
-        return service.stop();
+    public ResponseEntity<FastSession> stop(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            try {
+                FastSession session = service.stop(user.get());
+                return ResponseEntity.ok(session);
+            } catch (IllegalStateException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/status")
     @Operation(summary = "Status der aktuellen Fasten-Session", 
-               description = "Gibt den Status der aktuellen Fasten-Session zurück (aktiv/inaktiv mit Dauer und Ziel)")
+               description = "Gibt den Status der aktuellen Fasten-Session für einen spezifischen User zurück (aktiv/inaktiv mit Dauer und Ziel)")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public FastStatusResponse status() {
-        return service.getStatus();
+    public ResponseEntity<FastStatusResponse> status(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isPresent()) {
+                return ResponseEntity.ok(service.getStatus(user.get()));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/history")
-    @Operation(summary = "Historie aller Fasten-Sessions", description = "Gibt eine Liste aller bisherigen Fasten-Sessions zurück")
+    @Operation(summary = "Historie aller Fasten-Sessions", description = "Gibt eine Liste aller bisherigen Fasten-Sessions für einen spezifischen User zurück")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen")
+            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
     })
-    public List<FastSession> history() {
-        return service.history();
+    public ResponseEntity<List<FastSession>> history(@RequestParam(required = false, defaultValue = "1") String userId) {
+        try {
+            Long id = Long.parseLong(userId);
+            Optional<User> user = userService.getUserById(id);
+            if (user.isPresent()) {
+                return ResponseEntity.ok(service.history(user.get()));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    // User-specific endpoints for cross-device login
+    @GetMapping("/user/{identifier}/status")
+    @Operation(summary = "Status der aktuellen Fasten-Session für spezifischen User", 
+               description = "Gibt den Status der aktuellen Fasten-Session für einen spezifischen User zurück (über Username oder Email). Requires JWT authentication.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Status erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User can only access their own data"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastStatusResponse> statusByUser(@PathVariable String identifier) {
+        // Get authenticated user from security context
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        String authenticatedUsername = authentication.getName();
+        
+        // Check if authenticated user matches requested identifier
+        if (!authorizationService.userMatches(authenticatedUsername, identifier)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(service.getStatus(user.get()));
+    }
+
+    @GetMapping("/user/{identifier}/history")
+    @Operation(summary = "Historie aller Fasten-Sessions für spezifischen User", 
+               description = "Gibt eine Liste aller bisherigen Fasten-Sessions für einen spezifischen User zurück (über Username oder Email). Requires JWT authentication.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Historie erfolgreich abgerufen"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User can only access their own data"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<List<FastSession>> historyByUser(@PathVariable String identifier) {
+        // Get authenticated user from security context
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        String authenticatedUsername = authentication.getName();
+        
+        // Check if authenticated user matches requested identifier
+        if (!authorizationService.userMatches(authenticatedUsername, identifier)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(service.history(user.get()));
+    }
+
+    @PostMapping("/user/{identifier}/start")
+    @Operation(summary = "Neue Fasten-Session für spezifischen User starten", 
+               description = "Startet eine neue Fasten-Session für einen spezifischen User mit optionalem Ziel. Requires JWT authentication.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich gestartet"),
+            @ApiResponse(responseCode = "400", description = "Ungültige Eingabedaten oder User bereits aktiv"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User can only start their own sessions"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastSession> startByUser(@PathVariable String identifier, 
+                                                   @Valid @RequestBody(required = false) StartFastRequest request) {
+        // Get authenticated user from security context
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        String authenticatedUsername = authentication.getName();
+        
+        // Check if authenticated user matches requested identifier
+        if (!authorizationService.userMatches(authenticatedUsername, identifier)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        if (request == null) {
+            request = new StartFastRequest(16); // Default 16 Stunden
+        }
+        
+        try {
+            FastSession session = service.start(user.get(), request);
+            return ResponseEntity.ok(session);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/user/{identifier}/stop")
+    @Operation(summary = "Aktive Fasten-Session für spezifischen User beenden", 
+               description = "Beendet die aktuell aktive Fasten-Session für einen spezifischen User. Requires JWT authentication.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Fasten-Session erfolgreich beendet"),
+            @ApiResponse(responseCode = "400", description = "Keine aktive Fasten-Session vorhanden"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - JWT token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - User can only stop their own sessions"),
+            @ApiResponse(responseCode = "404", description = "User nicht gefunden")
+    })
+    public ResponseEntity<FastSession> stopByUser(@PathVariable String identifier) {
+        // Get authenticated user from security context
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        String authenticatedUsername = authentication.getName();
+        
+        // Check if authenticated user matches requested identifier
+        if (!authorizationService.userMatches(authenticatedUsername, identifier)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        
+        Optional<User> user = userService.getUserByIdentifier(identifier);
+        if (user.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            FastSession session = service.stop(user.get());
+            return ResponseEntity.ok(session);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @ExceptionHandler(IllegalStateException.class)
