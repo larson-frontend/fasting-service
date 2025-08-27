@@ -12,6 +12,10 @@ services:
         value: prod
       - key: JWT_SECRET
         value: ifvQ24IWvnUOrXCY80uu5jEy1kijIHr2EP0rToUI5Wg89r1j7m-3xe72p8a00UNr
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fasting-db
+          property: connectionString
 
 databases:
   - name: fasting-db
