@@ -1,7 +1,7 @@
 # Fasting App – Development Guide (Render + Spring Boot + Postgres)
 
 ## 1. Project Overview
-Full-stack fasting tracker: Frontend Vue 3 + TS, Backend Spring Boot 3.3.2 (JWT), PostgreSQL, Deployment via Render (Docker). Ziel: sofort klonbar, lokal testbar, 1-Klick-Deploy auf Render.
+Full-stack fasting tracker: Frontend Vue 3 + TS, Backend Spring Boot 3.3.11 (JWT), PostgreSQL, Deployment via Render (Docker). Ziel: sofort klonbar, lokal testbar, 1-Klick-Deploy auf Render.
 
 ## 2. What Changed
 - Korrektes Docker Multi-Stage Build + JVM-OPTS
@@ -47,12 +47,41 @@ public class FastController {
 9. Manuelles Smoke-Testing: `GET /actuator/health`, ggf. vorhandene API-Endpunkte.
 10. AutoDeploy aktiviert lassen für main/develop – Feature-Branches nach Bedarf.
 
-## 5. Production Notes
+## 5. Security & Public Endpoints
+
+Aktuell öffentlich (ohne JWT) erreichbar:
+
+- `POST /api/users/login-or-create` – Erstlogin / Registrierung (liefert Access + Refresh Token)
+- `POST /api/users/refresh` – Token-Refresh (liefert neue Tokens)
+- `POST /api/users/logout` – Refresh Token wird ungültig (idempotent)
+- `GET /actuator/health` – Render Healthcheck
+- `GET /actuator/info` – Basis-Metadaten (nur wenn Info Contributor aktiv)
+
+Alles andere erfordert einen gültigen Bearer JWT Access Token.
+
+Filter Chain (Reihenfolge relevant):
+1. `CorrelationIdFilter` – setzt/propagiert `correlationId` für Logging
+2. `JwtAuthenticationFilter` – extrahiert & validiert Bearer Token; überspringt `/actuator/*` + öffentliche Endpoints
+3. `RateLimitingFilter` – simple In-Memory Rate Limits (pro IP + Pfad)
+
+JWT Secret Anforderung:
+- Env Var `JWT_SECRET` (Render Secret) MUSS >= 32 Zeichen lang sein
+- Darf nicht der Platzhalter / Default sein
+- Bei Startup wird dies validiert – sonst Abbruch
+
+Empfehlungen:
+- Auf Production niemals Test- oder Default-Secret verwenden
+- Rotieren über Render Dashboard (Secret editieren → Deploy triggern)
+- Für lokale Entwicklung kann ein starkes Secret in `.env` / Export gesetzt werden
+
+Rate Limiting Tests benutzen kleinere Kapazität via Test-Properties; Standardwerte in Prod moderat halten oder extern (Redis) auslagern wenn Skalierung nötig wird.
+
+## 6. Production Notes
 
 - Free Tier Schlafmodus: Service schläft nach Idle; erster Request kalt.
 - DB Backups: Free Postgres hat keine automatischen Backups – ggf. extern sichern.
 - Pooling: Konservative Hikari-Settings empfohlen (z.B. maxPoolSize 5–10 im Free Tier).
-- Security: JWT Secret als Secret Env Var hinterlegen (nicht den CI-Test-Secret verwenden).
+- Security: JWT Secret als Secret Env Var hinterlegen (nicht den CI-Test-Secret verwenden); siehe Abschnitt "Security & Public Endpoints".
 - Observability: Actuator Health ok; optional weitere Endpoints absichern / deaktivieren.
 - Upgrades: Regelmäßig `mvn versions:display-dependency-updates` prüfen.
 - Image Scan: CI nutzt Trivy (HIGH/CRITICAL Gate). Bei False Positives `.trivyignore` mit CVE notieren.
