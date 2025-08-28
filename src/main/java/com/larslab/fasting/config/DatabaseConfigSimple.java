@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -13,6 +14,8 @@ import com.zaxxer.hikari.HikariDataSource;
 import javax.sql.DataSource;
 
 @Configuration
+// Only active when NOT running with the 'test' profile. Tests should use the H2 datasource from application-test.properties.
+@Profile("!test")
 public class DatabaseConfigSimple {
     
     private static final Logger logger = LoggerFactory.getLogger(DatabaseConfigSimple.class);
