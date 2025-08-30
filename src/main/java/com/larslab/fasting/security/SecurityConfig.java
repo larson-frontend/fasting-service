@@ -13,13 +13,16 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitingFilter rateLimitingFilter;
     private final CorrelationIdFilter correlationIdFilter;
+    private final SwaggerBasicAuthFilter swaggerBasicAuthFilter;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           RateLimitingFilter rateLimitingFilter,
-                          CorrelationIdFilter correlationIdFilter) {
+                          CorrelationIdFilter correlationIdFilter,
+                          SwaggerBasicAuthFilter swaggerBasicAuthFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.rateLimitingFilter = rateLimitingFilter;
         this.correlationIdFilter = correlationIdFilter;
+        this.swaggerBasicAuthFilter = swaggerBasicAuthFilter;
     }
 
     @Bean
@@ -29,11 +32,14 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/actuator/health", "/actuator/info",
-                    "/api/users/login-or-create", "/api/users/refresh", "/api/users/logout"
+                    "/api/users/login-or-create", "/api/users/refresh", "/api/users/logout",
+                    // allow swagger endpoints through authorization; they are gated by SwaggerBasicAuthFilter
+                    "/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(swaggerBasicAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(rateLimitingFilter, JwtAuthenticationFilter.class);
         return http.build();
