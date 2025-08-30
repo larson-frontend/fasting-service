@@ -20,9 +20,9 @@ services:
       - key: SWAGGER_BASIC_ENABLED
         value: "true"
       - key: SWAGGER_BASIC_USER
-        fromSecret: SWAGGER_BASIC_USER
+        sync: false
       - key: SWAGGER_BASIC_PASS
-        fromSecret: SWAGGER_BASIC_PASS
+        sync: false
 
 databases:
   - name: fasting-db
