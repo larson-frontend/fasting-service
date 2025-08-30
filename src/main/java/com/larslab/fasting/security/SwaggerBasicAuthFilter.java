@@ -139,12 +139,15 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
 
     private static String ensureBase32(String raw) {
         try {
-            // If it decodes fine, assume it's already Base32
-            Base32.decode(raw);
-            return raw;
+            // If it decodes fine, check if decoded length is valid for TOTP (16-20 bytes)
+            byte[] decoded = Base32.decode(raw);
+            if (decoded.length >= 16 && decoded.length <= 20) {
+                return raw;
+            }
         } catch (Exception ex) {
-            // Otherwise, encode ASCII bytes to Base32
-            return Base32.encode(raw.getBytes(StandardCharsets.US_ASCII));
+            // Ignore and fallback to encoding below
         }
+        // Otherwise, encode ASCII bytes to Base32
+        return Base32.encode(raw.getBytes(StandardCharsets.US_ASCII));
     }
 }
