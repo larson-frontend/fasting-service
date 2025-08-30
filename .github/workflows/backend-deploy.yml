@@ -1,0 +1,157 @@
+name: Backend Deploy
+
+# Deployment runs only on pushes to main after merge, reusing CI artifacts when possible.
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.github/**'
+      - 'CHANGELOG.md'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  download-artifacts:
+    name: Download CI artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      has_artifact: ${{ steps.check.outputs.exists }}
+      pr_number: ${{ steps.prmeta.outputs.pr }}
+    steps:
+      - name: Extract PR number from merge commit
+        id: prmeta
+        shell: bash
+        run: |
+          msg="${{ github.event.head_commit.message }}"
+          # Try to find patterns like: Merge pull request #123 ...
+          if echo "$msg" | grep -Eo '#[0-9]+' | head -n1 | sed 's/#//' > pr.txt; then
+            PR=$(cat pr.txt)
+          fi
+          if [[ -n "$PR" ]]; then
+            echo "Detected PR: $PR"
+            echo "pr=$PR" >> $GITHUB_OUTPUT
+          else
+            echo "No PR number detected in merge commit message"
+          fi
+      - name: Try download JAR
+        id: dl
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: backend-ci.yml
+          workflow_conclusion: success
+          pr: ${{ steps.prmeta.outputs.pr }}
+          name: fasting-service-jar
+          if_no_artifact_found: warn
+      - name: Check artifact exists
+        id: check
+        run: |
+          if ls **/*.jar >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-if-needed:
+    name: Build Jar (fallback)
+    runs-on: ubuntu-latest
+    needs: download-artifacts
+    if: ${{ needs.download-artifacts.outputs.has_artifact != 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Temurin JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+      - name: Maven Package
+        run: mvn -B -ntp -DskipTests package
+      - name: Upload Artifact (Jar)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fasting-service-jar
+          path: target/*-SNAPSHOT.jar
+          if-no-files-found: error
+
+  publish-image:
+    name: Build & Push Image from Artifact
+    runs-on: ubuntu-latest
+    needs: [download-artifacts, build-if-needed]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fasting-service-jar
+          path: ./.deploy-artifacts
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create runtime Dockerfile (artifact only)
+        run: |
+          cat > Dockerfile.deploy <<'EOF'
+          FROM eclipse-temurin:21-jre
+          WORKDIR /app
+          COPY .deploy-artifacts/*.jar app.jar
+          EXPOSE 8080
+          ENTRYPOINT ["java","-jar","/app/app.jar"]
+          EOF
+
+      - name: Extract Metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/fasting-service
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and Push Image
+        id: build-image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.deploy
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Trivy Vulnerability Scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/fasting-service@${{ steps.build-image.outputs.digest }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          timeout: 10m
+
+      - name: Summary
+        run: |
+          echo "Image pushed: ghcr.io/${{ github.repository_owner }}/fasting-service" >> $GITHUB_STEP_SUMMARY
+          echo "Tags: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY

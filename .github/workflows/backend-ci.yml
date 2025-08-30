@@ -1,11 +1,25 @@
 name: Backend CI
 
+# Run on PRs to develop/main; allow manual dispatch with force input.
 on:
-  push:
-    branches: [ develop, main, master, 'FEAT/**', 'fix/**' ]
   pull_request:
-    branches: [ develop, main, master ]
-  workflow_dispatch: {}
+    branches: [ develop, main ]
+    types: [opened, synchronize, reopened, edited, labeled, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force CI run even if only docs/meta changed"
+        required: false
+        type: boolean
+        default: false
+
+# Cancel older runs per PR/branch to save time/costs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build-test:
@@ -13,11 +27,86 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JWT_SECRET: test-ci-secret-please-change-me-12345678901234567890
-      # Ensure consistent Java memory for tests if needed
       MAVEN_OPTS: -Xmx1g
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Detect changed paths (docs/meta vs code)
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - '**/*.md'
+              - 'LICENSE'
+              - '.github/**'
+              - 'CHANGELOG.md'
+            code:
+              - '**/*'
+              - '!.github/**'
+              - '!**/*.md'
+              - '!LICENSE'
+              - '!CHANGELOG.md'
+
+      - name: Read latest commit message
+        id: msg
+        run: |
+          echo "msg<<EOF" >> $GITHUB_OUTPUT
+          git log -1 --pretty=%B >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Evaluate skip/force conditions
+        id: gate
+        env:
+          IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+          FORCE_INPUT: ${{ inputs.force }}
+          DOCS_CHANGED: ${{ steps.changes.outputs.docs }}
+          CODE_CHANGED: ${{ steps.changes.outputs.code }}
+        shell: bash
+        run: |
+          title='${{ github.event.pull_request.title || '' }}'
+          msg='${{ steps.msg.outputs.msg || '' }}'
+          base='${{ github.event.pull_request.base.ref || 'develop' }}'
+          labels=$(jq -r '.pull_request.labels[].name // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+
+          should_skip_global=false
+          should_skip_dev=false
+          should_force=false
+
+          for token in '[skip ci]' '[ci skip]' '[no ci]' '[skip actions]' '[actions skip]'; do
+            if echo "$title$msg" | grep -qi "$token"; then should_skip_global=true; fi
+          done
+          if echo "$title$msg" | grep -qi '\[skip dev-ci\]'; then should_skip_dev=true; fi
+
+          for token in '[force ci]' '[ci force]' '/ci run' '/run ci'; do
+            if echo "$title$msg" | grep -qi "$token"; then should_force=true; fi
+          done
+          if echo "$labels" | grep -qi '\bci:force\b'; then should_force=true; fi
+          if [ "${IS_DISPATCH}" = "true" ] && [ "${FORCE_INPUT}" = "true" ]; then should_force=true; fi
+
+          docs_only=false
+          if [ "${CODE_CHANGED}" != "true" ] && [ "${DOCS_CHANGED}" = "true" ]; then
+            docs_only=true
+          fi
+
+          echo "global=$should_skip_global" >> $GITHUB_OUTPUT
+          echo "dev=$should_skip_dev" >> $GITHUB_OUTPUT
+          echo "force=$should_force" >> $GITHUB_OUTPUT
+          echo "base=$base" >> $GITHUB_OUTPUT
+          echo "docs_only=$docs_only" >> $GITHUB_OUTPUT
+
+      - name: Early exit for docs-only changes (unless forced)
+        if: ${{ steps.gate.outputs.force != 'true' && steps.gate.outputs.docs_only == 'true' }}
+        run: |
+          echo "Docs/meta-only change detected. CI skipped. Add [force ci] label 'ci:force' or dispatch with force=true to run anyway." >> $GITHUB_STEP_SUMMARY
+          exit 0
+
+      - name: Fail early if skip requested (for visibility)
+        if: ${{ steps.gate.outputs.force != 'true' && (steps.gate.outputs.global == 'true' || (steps.gate.outputs.base == 'develop' && steps.gate.outputs.dev == 'true')) }}
+        run: |
+          echo "CI skipped due to skip token in PR title or commit message." >> $GITHUB_STEP_SUMMARY
+          exit 0
 
       - name: Set up Temurin JDK 21
         uses: actions/setup-java@v4
@@ -30,11 +119,9 @@ jobs:
         run: mvn -B -ntp test
 
       - name: Build Jar
-        if: success()
         run: mvn -B -ntp -DskipTests package
 
       - name: Upload Artifact (Jar)
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: fasting-service-jar
@@ -42,16 +129,12 @@ jobs:
           if-no-files-found: error
 
   docker-build:
-    name: Docker Build
+    name: Docker Build (validate only)
     runs-on: ubuntu-latest
     needs: build-test
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
     permissions:
       contents: read
-      packages: write
-      id-token: write
-    env:
-      IMAGE_NAME: fasting-service
-      REGISTRY: ghcr.io
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,49 +145,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Download built JAR artifact
+        uses: actions/download-artifact@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: fasting-service-jar
+          path: ./.ci-artifacts
 
-      - name: Extract Metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Create lightweight runtime Dockerfile (no rebuild)
+        run: |
+          cat > Dockerfile.ci <<'EOF'
+          FROM eclipse-temurin:21-jre
+          WORKDIR /app
+          COPY .ci-artifacts/*.jar app.jar
+          EXPOSE 8080
+          ENTRYPOINT ["java","-jar","/app/app.jar"]
+          EOF
 
-      - name: Build and Push Image
-        id: build-image
+      - name: Build image locally (no push)
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          file: Dockerfile
+          file: Dockerfile.ci
+          push: false
+          tags: local/fasting-service:test
           platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BUILD_VERSION=${{ github.sha }}
-
-      - name: Trivy Vulnerability Scan (Pushed Image Digest)
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}@${{ steps.build-image.outputs.digest }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          timeout: 10m
 
       - name: Summary
-        run: |
-          echo "Image pushed: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
-          echo "Tags: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+        run: echo "Docker image validated for PR to main" >> $GITHUB_STEP_SUMMARY
