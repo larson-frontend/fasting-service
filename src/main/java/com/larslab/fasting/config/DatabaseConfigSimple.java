@@ -33,26 +33,31 @@ public class DatabaseConfigSimple {
         
         if (!databaseUrl.isEmpty()) {
             try {
-                // Parse the DATABASE_URL manually if needed
-                // Format: postgresql://user:password@host:port/database
-                String cleanUrl = databaseUrl.replace("postgresql://", "");
-                String[] parts = cleanUrl.split("@");
-                String[] userPass = parts[0].split(":");
-                String user = userPass[0];
-                String password = userPass[1];
-                
-                String[] hostDb = parts[1].split("/");
-                String[] hostPort = hostDb[0].split(":");
-                String host = hostPort[0];
-                String port = hostPort.length > 1 ? hostPort[1] : "5432";
-                String database = hostDb[1];
-                
-                String jdbcUrl = String.format("jdbc:postgresql://%s:%s/%s?sslmode=require", host, port, database);
-                
-                logger.info("Parsed connection details - Host: {}, Port: {}, Database: {}, User: {}", 
-                    host, port, database, user);
+                // Support both postgres:// and postgresql:// schemes from Render
+                String normalized = databaseUrl.replaceFirst("^postgres(ql)?://", "postgresql://");
+                java.net.URI uri = java.net.URI.create(normalized);
+
+                String userInfo = uri.getUserInfo();
+                if (userInfo == null || !userInfo.contains(":")) {
+                    throw new IllegalArgumentException("DATABASE_URL missing user or password in userinfo");
+                }
+                String user = userInfo.substring(0, userInfo.indexOf(':'));
+                String password = userInfo.substring(userInfo.indexOf(':') + 1);
+
+                String host = uri.getHost();
+                int portNum = uri.getPort() == -1 ? 5432 : uri.getPort();
+                String path = uri.getPath();
+                if (path == null || path.length() <= 1) {
+                    throw new IllegalArgumentException("DATABASE_URL missing database name in path");
+                }
+                String database = path.startsWith("/") ? path.substring(1) : path;
+
+                String jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?sslmode=require", host, portNum, database);
+
+                logger.info("Parsed connection details - Host: {}, Port: {}, Database: {}, User: {}",
+                    host, portNum, database, user);
                 logger.info("Generated JDBC URL: {}", jdbcUrl);
-                
+
                 config.setJdbcUrl(jdbcUrl);
                 config.setUsername(user);
                 config.setPassword(password);
