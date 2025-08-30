@@ -6,7 +6,7 @@ Persistenz: **PostgreSQL**. Enthält **Mock-Daten** und **Docker Compose** (App 
 ---
 
 ## Voraussetzungen
-- **Java 21** (Temurin/Eclipse Adoptium o.ä.)
+## Dokumentation
 - **Maven 3.9+**
 - (optional) **Docker** & **Docker Compose** für Container-Start
 
@@ -14,7 +14,7 @@ Persistenz: **PostgreSQL**. Enthält **Mock-Daten** und **Docker Compose** (App 
 
 ## Projektstruktur
 ```
-fasting-service/
+## 📝 Entwickler-Notizen für Copilot
  ├─ pom.xml
  ├─ Dockerfile
  ├─ docker-compose.yml
@@ -377,7 +377,15 @@ docker run --rm -p 10000:10000 \
 
 ---
 
-## 📝 Entwickler-Notizen für Copilot
+## � Dokumentation
+
+Weitere Dokumente findest du unter `docs/`:
+- `docs/development/Development.md` – Dev & Deploy Guide
+- `docs/frontend/` – Frontend-Integrationsguides und Beispiele
+- `docs/backend/USER_MANAGEMENT_IMPLEMENTATION.md` – Backend User-Management
+- `docs/testing/` – Test-Guide, Test-Report, API Test README
+
+## �📝 Entwickler-Notizen für Copilot
 
 ### Wichtige Endpunkte für Integration:
 1. **`POST /api/fast/start`** - Session starten (mit optionalem goalHours)

@@ -37,7 +37,7 @@ public class FastController {
 ## 4. Deploy to Render (Steps)
 
 1. Repository vorbereiten: Sicherstellen, dass `render.yaml` im Repository-Wurzelverzeichnis liegt und Dockerfile funktioniert (lokal `docker build .`).
-2. **Connect GitHub with least privilege:** In Render beim Verbinden mit GitHub "Only select repositories" wählen und ausschließlich das Repo `fasting-service` freigeben (Backend). `fasting-frontend` NICHT auswählen – das wird nur benötigt, wenn das Frontend später ebenfalls auf Render (als *Static Site*) deployt wird.
+2. Connect GitHub with least privilege: In Render beim Verbinden mit GitHub "Only select repositories" wählen und ausschließlich das Repo `fasting-service` freigeben (Backend). `fasting-frontend` nicht auswählen – das wird nur benötigt, wenn das Frontend später ebenfalls auf Render (als Static Site) deployt wird.
 3. New Web Service anlegen: "+ New" → Web Service → Repository `fasting-service` auswählen.
 4. Render erkennt automatisch `render.yaml` → bestätigen.
 5. Environment: Docker (aus `render.yaml`), Region: Frankfurt (wie definiert), Plan: Free (oder höher falls nötig).
@@ -51,11 +51,11 @@ public class FastController {
 
 Aktuell öffentlich (ohne JWT) erreichbar:
 
-- `POST /api/users/login-or-create` – Erstlogin / Registrierung (liefert Access + Refresh Token)
-- `POST /api/users/refresh` – Token-Refresh (liefert neue Tokens)
-- `POST /api/users/logout` – Refresh Token wird ungültig (idempotent)
-- `GET /actuator/health` – Render Healthcheck
-- `GET /actuator/info` – Basis-Metadaten (nur wenn Info Contributor aktiv)
+- POST `/api/users/login-or-create` – Erstlogin / Registrierung (liefert Access + Refresh Token)
+- POST `/api/users/refresh` – Token-Refresh (liefert neue Tokens)
+- POST `/api/users/logout` – Refresh Token wird ungültig (idempotent)
+- GET `/actuator/health` – Render Healthcheck
+- GET `/actuator/info` – Basis-Metadaten (nur wenn Info Contributor aktiv)
 
 Alles andere erfordert einen gültigen Bearer JWT Access Token.
 
@@ -85,4 +85,8 @@ Rate Limiting Tests benutzen kleinere Kapazität via Test-Properties; Standardwe
 - Observability: Actuator Health ok; optional weitere Endpoints absichern / deaktivieren.
 - Upgrades: Regelmäßig `mvn versions:display-dependency-updates` prüfen.
 - Image Scan: CI nutzt Trivy (HIGH/CRITICAL Gate). Bei False Positives `.trivyignore` mit CVE notieren.
-- **GitHub permissions:** Least privilege – Render hat nur Zugriff auf `fasting-service`. `fasting-frontend` erst freigeben, wenn es als Static Site deployed wird.
+- GitHub permissions: Least privilege – Render hat nur Zugriff auf `fasting-service`. `fasting-frontend` erst freigeben, wenn es als Static Site deployed wird.
+// moved from repository root
+// See original history for authorship
+
+...existing content moved...
