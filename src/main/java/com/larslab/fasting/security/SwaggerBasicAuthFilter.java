@@ -15,6 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.util.Base64;
 import org.jboss.aerogear.security.otp.Totp;
 import org.jboss.aerogear.security.otp.api.Base32;
@@ -98,16 +99,77 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
         boolean isSwaggerPath = matcher.match("/swagger-ui/**", path)
                 || matcher.match("/v3/api-docs/**", path)
                 || matcher.match("/swagger-ui.html", path);
+        boolean is2faPath = matcher.match("/swagger-2fa", path);
         // Skip filtering if not swagger path or if disabled
-        return !isSwaggerPath || !enabled;
+        return !(isSwaggerPath || is2faPath) || !enabled;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String path = request.getRequestURI();
+
+        // HTML 2FA flow endpoint
+        if (twoFactorEnabled && "/swagger-2fa".equals(path)) {
+            String user = getBasicUserIfValid(request);
+            if (user == null) {
+                // Ask for Basic first
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setHeader("WWW-Authenticate", "Basic realm=Swagger");
+                response.setContentType("text/plain;charset=UTF-8");
+                response.getWriter().write("Authentication required");
+                return;
+            }
+
+            String returnTo = sanitizeReturnTo(request.getParameter("returnTo"));
+
+            if ("GET".equalsIgnoreCase(request.getMethod())) {
+                if (hasValid2faSessionCookie(request, user)) {
+                    response.sendRedirect(returnTo);
+                    return;
+                }
+                render2faForm(response, returnTo, null);
+                return;
+            }
+            if ("POST".equalsIgnoreCase(request.getMethod())) {
+                String code = request.getParameter("code");
+                if (code == null || code.isBlank()) {
+                    render2faForm(response, returnTo, "Bitte Code eingeben.");
+                    return;
+                }
+                boolean ok = verifySecondFactorCode(code);
+                if (ok) {
+                    issue2faSessionCookie(response, user);
+                    response.sendRedirect(returnTo);
+                } else {
+                    render2faForm(response, returnTo, "Ungültiger Code. Bitte erneut versuchen.");
+                }
+                return;
+            }
+            response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            return;
+        }
+
         if (isAuthorized(request, response)) {
             filterChain.doFilter(request, response);
             return;
+        }
+
+        // If Basic is correct but 2FA is missing, offer HTML flow for browsers
+        if (twoFactorEnabled) {
+            String user = getBasicUserIfValid(request);
+            if (user != null && !hasValid2faSessionCookie(request, user)) {
+                String accept = request.getHeader("Accept");
+                boolean wantsHtml = accept != null && accept.contains("text/html");
+                if (wantsHtml) {
+                    String returnTo = sanitizeReturnTo(originalUrl(request));
+                    String loc = "/swagger-2fa?returnTo=" + URLEncoder.encode(returnTo, StandardCharsets.UTF_8);
+                    response.sendRedirect(loc);
+                    return;
+                }
+                // Hint for API clients
+                response.setHeader("X-Require-2FA", "true");
+            }
         }
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -195,6 +257,98 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
             }
         }
         return false;
+    }
+
+    private String getBasicUserIfValid(HttpServletRequest request) {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) return null;
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header == null || !header.startsWith("Basic ")) return null;
+        try {
+            String base64Credentials = header.substring(6);
+            byte[] decoded = Base64.getDecoder().decode(base64Credentials);
+            String pair = new String(decoded, StandardCharsets.UTF_8);
+            int idx = pair.indexOf(':');
+            if (idx < 0) return null;
+            String user = pair.substring(0, idx);
+            String pass = pair.substring(idx + 1);
+            return (username.equals(user) && password.equals(pass)) ? user : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private String sanitizeReturnTo(String rt) {
+        if (rt == null || rt.isBlank()) return "/swagger-ui/index.html";
+        // Prevent open redirects: allow only swagger paths
+        if (rt.startsWith("/swagger-ui") || rt.startsWith("/v3/api-docs") || "/swagger-ui.html".equals(rt)) {
+            return rt;
+        }
+        return "/swagger-ui/index.html";
+    }
+
+    private String originalUrl(HttpServletRequest request) {
+        String qs = request.getQueryString();
+        return request.getRequestURI() + (qs != null ? ("?" + qs) : "");
+    }
+
+        private void render2faForm(HttpServletResponse response, String returnTo, String errorMsg) throws IOException {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType("text/html;charset=UTF-8");
+        String safeReturn = returnTo; // already sanitized
+                String errorHtml = (errorMsg == null) ? "" : ("<p style='color:#b00020'>" + escapeHtml(errorMsg) + "</p>");
+                String html = """
+                                <!doctype html>
+                                <html lang="de">
+                                <head>
+                                    <meta charset="utf-8">
+                                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                                    <title>Swagger 2FA</title>
+                                    <style>
+                                        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;margin:2rem;}
+                                        .card{max-width:420px;padding:1.2rem;border:1px solid #e5e7eb;border-radius:8px;}
+                                        h1{font-size:1.25rem;margin:0 0 .75rem}
+                                        input{padding:.65rem .75rem;margin:.25rem 0;width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px}
+                                        button{margin-top:.5rem;padding:.6rem .9rem;border:0;border-radius:6px;background:#111827;color:#fff;cursor:pointer}
+                                        button:hover{background:#0b1220}
+                                        .hint{color:#6b7280;font-size:.9rem}
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class="card">
+                                        <h1>Zwei-Faktor-Verifizierung</h1>
+                                        <p class="hint">Bitte gib den 6-stelligen Code aus deiner Authenticator‑App ein.</p>
+                                        %s
+                                        <form method="post" action="/swagger-2fa">
+                                            <input type="text" name="code" pattern="\\d{6}" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+                                            <input type="hidden" name="returnTo" value="%s">
+                                            <button type="submit">Bestätigen</button>
+                                        </form>
+                                    </div>
+                                </body>
+                                </html>
+                                """.formatted(errorHtml, escapeHtmlAttr(safeReturn));
+        response.getWriter().write(html);
+    }
+
+    private boolean verifySecondFactorCode(String code) {
+        if (totpSecret != null && !totpSecret.isBlank()) {
+            try {
+                String normalizedSecret = ensureBase32(totpSecret.trim().replace(" ", "").toUpperCase());
+                Totp totp = new Totp(normalizedSecret);
+                return totp.verify(code);
+            } catch (Exception e) {
+                log.warn("TOTP verification failed due to exception: {}", e.toString());
+                return false;
+            }
+        }
+        return twoFactorCode != null && !twoFactorCode.isBlank() && twoFactorCode.equals(code);
+    }
+
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+    private static String escapeHtmlAttr(String s) {
+        return escapeHtml(s).replace("\"", "&quot;");
     }
 
     private void issue2faSessionCookie(HttpServletResponse response, String user) {
