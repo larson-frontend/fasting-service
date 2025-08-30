@@ -41,7 +41,10 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
         this.password = password;
         this.enabled = enabled;
         if (enabled) {
-                log.info("Swagger BasicAuth enabled with configured credentials");
+            if (username == null || username.isBlank()) {
+                log.info("Swagger BasicAuth enabled but username is not set");
+            } else {
+                log.info("Swagger BasicAuth enabled for user '{}'", username);
             }
         } else {
             log.info("Swagger BasicAuth disabled");
