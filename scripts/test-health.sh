@@ -1,6 +1,3 @@
 #!/bin/bash
-# Test health endpoint
-echo "🏥 Testing Health Endpoint"
-echo "========================="
-curl -X GET http://localhost:8080/actuator/health
-echo -e "\n"
+# Wrapper: moved to scripts/tests/test-health.sh
+exec "$(dirname "$0")/tests/test-health.sh" "$@"
