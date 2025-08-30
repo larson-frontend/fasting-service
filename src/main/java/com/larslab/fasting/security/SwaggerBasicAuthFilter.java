@@ -15,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import org.jboss.aerogear.security.otp.Totp;
+import org.jboss.aerogear.security.otp.api.Base32;
 
 /**
  * Protects Swagger UI and OpenAPI endpoints with simple HTTP Basic credentials from env/properties.
@@ -31,20 +33,38 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
     private final String username;
     private final String password;
     private final boolean enabled;
+    private final boolean twoFactorEnabled;
+    private final String twoFactorCode; // static header-code fallback
+    private final String totpSecret;    // Base32 TOTP secret
 
     public SwaggerBasicAuthFilter(
             @Value("${SWAGGER_BASIC_USER:}") String username,
             @Value("${SWAGGER_BASIC_PASS:}") String password,
-            @Value("${SWAGGER_BASIC_ENABLED:true}") boolean enabled
+            @Value("${SWAGGER_BASIC_ENABLED:true}") boolean enabled,
+            @Value("${SWAGGER_2FA_ENABLED:false}") boolean twoFactorEnabled,
+            @Value("${SWAGGER_2FA_CODE:}") String twoFactorCode,
+            @Value("${SWAGGER_TOTP_SECRET:}") String totpSecret
     ) {
         this.username = username;
         this.password = password;
         this.enabled = enabled;
+        this.twoFactorEnabled = twoFactorEnabled;
+        this.twoFactorCode = twoFactorCode;
+        this.totpSecret = totpSecret;
         if (enabled) {
             if (username == null || username.isBlank()) {
                 log.info("Swagger BasicAuth enabled but username is not set");
             } else {
                 log.info("Swagger BasicAuth enabled for user '{}'", username);
+            }
+            if (twoFactorEnabled) {
+                if ((totpSecret == null || totpSecret.isBlank()) && (twoFactorCode == null || twoFactorCode.isBlank())) {
+                    log.warn("Swagger 2FA enabled but neither SWAGGER_TOTP_SECRET nor SWAGGER_2FA_CODE is set; access will be denied until one is configured");
+                } else if (totpSecret != null && !totpSecret.isBlank()) {
+                    log.info("Swagger 2FA enabled (TOTP required via X-2FA header; Google Authenticator compatible)");
+                } else {
+                    log.info("Swagger 2FA enabled (static header code via X-2FA)");
+                }
             }
         } else {
             log.info("Swagger BasicAuth disabled");
@@ -72,7 +92,7 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setHeader("WWW-Authenticate", "Basic realm=Swagger");
-        response.getWriter().write("Unauthorized");
+        response.getWriter().write(twoFactorEnabled ? "Unauthorized: 2FA required" : "Unauthorized");
     }
 
     private boolean isAuthorized(HttpServletRequest request) {
@@ -92,9 +112,43 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
             if (idx < 0) return false;
             String user = pair.substring(0, idx);
             String pass = pair.substring(idx + 1);
-            return username.equals(user) && password.equals(pass);
+            boolean basicOk = username.equals(user) && password.equals(pass);
+            if (!basicOk) return false;
+
+            if (!twoFactorEnabled) return true;
+            // header-based second factor; prefer X-2FA, allow X-SWAGGER-2FA as alias
+            String code = request.getHeader("X-2FA");
+            if (code == null || code.isBlank()) {
+                code = request.getHeader("X-SWAGGER-2FA");
+            }
+            if (code == null || code.isBlank()) return false;
+
+            // If TOTP secret present, validate as TOTP; else fallback to static code
+            if (totpSecret != null && !totpSecret.isBlank()) {
+                try {
+                    String secret = ensureBase32(totpSecret);
+                    Totp totp = new Totp(secret);
+                    return totp.verify(code);
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+            // Static fallback
+            if (twoFactorCode == null || twoFactorCode.isBlank()) return false;
+            return twoFactorCode.equals(code);
         } catch (IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    private static String ensureBase32(String raw) {
+        try {
+            // If it decodes fine, assume it's already Base32
+            Base32.decode(raw);
+            return raw;
+        } catch (Exception ex) {
+            // Otherwise, encode ASCII bytes to Base32
+            return Base32.encode(raw.getBytes(StandardCharsets.US_ASCII));
         }
     }
 }
