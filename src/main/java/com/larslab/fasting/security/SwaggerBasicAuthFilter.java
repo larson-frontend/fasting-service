@@ -124,6 +124,15 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
             if (code == null || code.isBlank()) return false;
 
             // If TOTP secret present, validate as TOTP; else fallback to static code
+            if (totpSecret != null && !totpSecret.isBlank()) {
+                try {
+                    String normalizedSecret = ensureBase32(totpSecret.trim().replace(" ", "").toUpperCase());
+                    Totp totp = new Totp(normalizedSecret);
+                    if (totp.verify(code)) {
+                        return true;
+                    } else {
+                        return false;
+                    }
                 } catch (Exception e) {
                     log.warn("TOTP verification failed due to exception: {}", e.toString());
                     return false;
