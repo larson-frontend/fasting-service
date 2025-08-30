@@ -16,6 +16,13 @@ services:
         fromDatabase:
           name: fasting-db
           property: connectionString
+      # Protect Swagger UI with Basic Auth (credentials stored as Render secrets)
+      - key: SWAGGER_BASIC_ENABLED
+        value: "true"
+      - key: SWAGGER_BASIC_USER
+        fromSecret: SWAGGER_BASIC_USER
+      - key: SWAGGER_BASIC_PASS
+        fromSecret: SWAGGER_BASIC_PASS
 
 databases:
   - name: fasting-db
