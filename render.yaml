@@ -25,12 +25,15 @@ services:
         sync: false
       # Optional second factor for Swagger (header X-2FA required when enabled)
       - key: SWAGGER_2FA_ENABLED
-        value: "false"
+        value: "true"
       - key: SWAGGER_2FA_CODE
         sync: false
       # Real TOTP-based 2FA (Google Authenticator). If set, X-2FA must carry a valid 6-digit code.
       - key: SWAGGER_TOTP_SECRET
         sync: false
+      # 2FA session cookie duration (minutes) for Swagger; default is 15
+      - key: SWAGGER_2FA_SESSION_MINUTES
+        value: "15"
 
 databases:
   - name: fasting-db
