@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -24,6 +26,7 @@ import java.util.Base64;
 public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
 
     private static final AntPathMatcher matcher = new AntPathMatcher();
+    private static final Logger log = LoggerFactory.getLogger(SwaggerBasicAuthFilter.class);
 
     private final String username;
     private final String password;
@@ -37,6 +40,15 @@ public class SwaggerBasicAuthFilter extends OncePerRequestFilter {
         this.username = username;
         this.password = password;
         this.enabled = enabled;
+        if (enabled) {
+            if (username == null || username.isBlank()) {
+                log.info("Swagger BasicAuth enabled but username is not set");
+            } else {
+                log.info("Swagger BasicAuth enabled for user '{}'", username);
+            }
+        } else {
+            log.info("Swagger BasicAuth disabled");
+        }
     }
 
     @Override
